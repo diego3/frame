@@ -1,0 +1,27 @@
+# GoEngine config (YAML)
+# Omit or leave empty to use defaults.
+
+window:
+  width: 800
+  height: 600
+  title: "GoEngine"
+  resizable: true
+  fullscreen: false
+
+# Logical size for rendering (game coordinates); scaled to fit window.
+layout:
+  width: 800
+  height: 600
+
+# Asset paths (optional; used by scenes).
+assets:
+  font_path: "assets/ShadeBlue-2OozX.ttf"
+  font_size: 24
+  click_sound: "assets/840321__robo9418__wooden-short-click.wav"
+  scene_path: "scenes/main_menu.yaml"  # data-driven scene (objects + components)
+
+# Physics (used when scene uses physics; e.g. Box2D).
+physics:
+  gravity_x: 0      # game units/s² (usually 0)
+  gravity_y: 800    # game units/s² (positive = down)
+  pixel_scale: 64  # game units per meter
