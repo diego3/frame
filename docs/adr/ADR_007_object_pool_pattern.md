@@ -24,11 +24,13 @@ Apply this to high-volume, short-lived objects (e.g. projectiles, particles, one
 
 ## Tradeoffs
 
-| | Benefit | Cost |
-|---|--------|------|
+
+|                 | Benefit                                                 | Cost                                                                                                                  |
+| --------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | **Performance** | Fewer allocations → less GC work → smoother frame rate. | You must reset state when returning to the pool; forgetting can cause subtle bugs (e.g. a "dead" bullet still drawn). |
-| **Complexity** | Hot paths (Update/Draw) stay predictable. | More code: pool type, Get/Return (or Put) API, and clear reset rules. |
-| **Memory** | No allocation churn in gameplay. | Pool holds memory for max capacity even when not all objects are in use. |
+| **Complexity**  | Hot paths (Update/Draw) stay predictable.               | More code: pool type, Get/Return (or Put) API, and clear reset rules.                                                 |
+| **Memory**      | No allocation churn in gameplay.                        | Pool holds memory for max capacity even when not all objects are in use.                                              |
+
 
 **When to use:** Many instances of the same type created/destroyed often (e.g. bullets, particles).  
 **When to skip:** Long-lived or few objects; prefer normal allocation until profiling shows a problem (see ADR-006: measure first).
@@ -42,3 +44,4 @@ Apply this to high-volume, short-lived objects (e.g. projectiles, particles, one
 
 - ADR-006: Coding standards (frame budget, minimize allocations in Update/Draw, measure before optimizing).
 - Common pattern in game engines (e.g. Unity `Object.Instantiate` vs pooling; Ebiten/Go: reuse structs/slices).
+
