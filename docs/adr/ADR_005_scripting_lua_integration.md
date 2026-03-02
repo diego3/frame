@@ -1,8 +1,8 @@
-# ADR-004: Scripting language integration (Lua) with Go
+# ADR-005: Scripting language integration (Lua) with Go
 
 ## Status
 
-Proposed.
+Accepted. **Option 1 (Pure Go VM) implemented.**
 
 ## Context
 
@@ -115,3 +115,9 @@ For a **small platform game** and a team that values **simple builds and readabi
 - **gopher-lua (Option 1):** [github.com/yuin/gopher-lua](https://github.com/yuin/gopher-lua) – Pure Go Lua 5.1 VM.
 - **Lua in C:** [lua.org](https://www.lua.org/) – Official Lua; C implementation.
 - **CGo:** [Go docs – CGo](https://pkg.go.dev/cmd/cgo) – Build constraints and portability implications.
+
+## Implementation (Option 1)
+
+- **Package `script`:** VM wraps `gopher-lua` LState; `NewVM()`, `RegisterEngine(name, fns)`, `DoFile(path)`, `DoString(s)`, `CallFunc(name, args...)`, `Close()`. `EngineFuncs(playSound, switchScene, quit)` returns the map for `engine.play_sound`, `engine.switch_scene`, `engine.quit`.
+- **Game:** Creates VM in `Init()`, registers engine callbacks (play sound via loader, switch scene/quit via event bus), closes VM in `Shutdown()`. `ScriptVM()` returns the VM for running scripts (e.g. from a scene or level loader).
+- **Sample script:** `scripts/sample.lua` shows engine API usage and a function callable from Go via `CallFunc`.

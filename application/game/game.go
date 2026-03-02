@@ -7,6 +7,7 @@ import (
 	"goengine/application/config"
 	"goengine/event"
 	"goengine/ports"
+	"goengine/script"
 	"goengine/view/input"
 	"goengine/view/scene"
 
@@ -19,6 +20,7 @@ var ErrShutdownRequested = errors.New("shutdown requested")
 // Game holds the game state and implements ebiten.Game. It orchestrates config, loader, UI, and scene manager.
 // Scene change and quit are driven by events; Game subscribes to SceneChangeRequested and QuitRequested.
 // Input is translated to intents by input.Adapter before scene Update.
+// Script VM (Lua 5.1) is available via ScriptVM(); engine.play_sound, engine.switch_scene, engine.quit are registered.
 type Game struct {
 	cfg            *config.Config
 	loader         ports.AssetLoader
@@ -27,6 +29,7 @@ type Game struct {
 	initialSceneID string
 	bus            *event.Bus
 	inputAdapter   *input.Adapter
+	scriptVM       *script.VM
 	shutdownCh     <-chan struct{}
 	quitCh         chan struct{}
 	quitOnce       sync.Once
@@ -64,13 +67,44 @@ func (g *Game) SetShutdownChannel(ch <-chan struct{}) {
 	g.shutdownCh = ch
 }
 
-// Init runs once before the game loop. Loads the initial scene via the manager.
+// Init runs once before the game loop. Loads the initial scene via the manager and initializes the script VM.
 func (g *Game) Init() error {
-	return g.manager.SwitchTo(g.initialSceneID, g.cfg, g.loader, g.ui, g.bus)
+	g.scriptVM = script.NewVM()
+	g.scriptVM.RegisterEngine("engine", script.EngineFuncs(
+		g.playSound,
+		g.switchScene,
+		g.quit,
+	))
+	if err := g.manager.SwitchTo(g.initialSceneID, g.cfg, g.loader, g.ui, g.bus); err != nil {
+		return err
+	}
+	return nil
 }
 
-// Shutdown runs when the game exits. Releases loaded resources.
+// playSound loads and plays the audio at path. Used by Lua engine.play_sound(path).
+func (g *Game) playSound(path string) {
+	_ = g.loader.LoadAudio(path)
+	if p, err := g.loader.NewAudioPlayer(path); err == nil {
+		p.Play()
+	}
+}
+
+// switchScene emits SceneChangeRequested so the application switches scene. Used by Lua engine.switch_scene(id).
+func (g *Game) switchScene(sceneID string) {
+	g.bus.Emit(event.SceneChangeRequested{SceneID: sceneID})
+}
+
+// quit emits QuitRequested so the application exits. Used by Lua engine.quit().
+func (g *Game) quit() {
+	g.bus.Emit(event.QuitRequested{})
+}
+
+// Shutdown runs when the game exits. Releases loaded resources and closes the script VM.
 func (g *Game) Shutdown() {
+	if g.scriptVM != nil {
+		g.scriptVM.Close()
+		g.scriptVM = nil
+	}
 	g.loader.Clear()
 }
 
@@ -112,4 +146,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 // Layout implements ebiten.Game.
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return g.cfg.Layout.Width, g.cfg.Layout.Height
+}
+
+// ScriptVM returns the Lua VM for running scripts. Scripts can call engine.play_sound(path),
+// engine.switch_scene(scene_id), and engine.quit(). Use DoFile or DoString to run scripts.
+// Returns nil after Shutdown.
+func (g *Game) ScriptVM() *script.VM {
+	return g.scriptVM
 }
