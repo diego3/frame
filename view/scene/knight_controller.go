@@ -3,9 +3,9 @@ package scene
 import (
 	"math"
 
-	"goengine/input"
-	"goengine/object"
 	"goengine/physics"
+	"goengine/view/input"
+	"goengine/object"
 )
 
 // KnightController drives the "knight" object in the world: WASD movement (run when moving left/right, idle otherwise),
@@ -93,20 +93,6 @@ func (c *KnightController) Update(world *object.World, dt float64) {
 			pb.Body.SetLinearVelocity(physics.Vec2{X: vx, Y: vy})
 		}
 	}
-	/*else if transform := knight.Transform(); transform != nil {
-		if input.ActionPressed("move_left") {
-			transform.X -= knightSpeed * dt
-		}
-		if input.ActionPressed("move_right") {
-			transform.X += knightSpeed * dt
-		}
-		if input.ActionPressed("move_up") {
-			transform.Y -= knightSpeed * dt
-		}
-		if input.ActionPressed("move_down") {
-			transform.Y += knightSpeed * dt
-		}
-	}*/
 
 	anim := knight.Animator()
 	// Attack input (one-shot)

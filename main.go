@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"goengine/config"
-	"goengine/engine"
-	"goengine/game"
+	"goengine/application/config"
+	"goengine/application/engine"
+	"goengine/application/game"
 )
 
 func main() {

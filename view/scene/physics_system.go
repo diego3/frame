@@ -5,8 +5,8 @@ import (
 	"image/color"
 	"log"
 
-	"goengine/object"
 	"goengine/physics"
+	"goengine/object"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"

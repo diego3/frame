@@ -6,12 +6,12 @@ import (
 	"syscall"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"goengine/config"
-	"goengine/game"
+	"goengine/application/game"
+	"goengine/application/config"
 	"goengine/ports"
 	"goengine/resource"
-	"goengine/scene"
-	"goengine/ui"
+	"goengine/view/scene"
+	"goengine/view/ui"
 )
 
 // Engine composes config, resources, UI, scene, and game loop. Create with New, then call Run.

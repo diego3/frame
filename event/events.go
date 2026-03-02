@@ -1,5 +1,7 @@
 package event
 
+// TODO, this events shoud be moved to its own package
+
 // SceneChangeRequested is emitted when a scene or UI requests a switch to another scene.
 // Subscribers (e.g. application) perform the actual switch.
 type SceneChangeRequested struct {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"goengine/object"
 	"goengine/ports"
+	"goengine/object"
 	"gopkg.in/yaml.v3"
 )
 

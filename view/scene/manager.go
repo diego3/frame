@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"goengine/config"
+	"goengine/application/config"
 	"goengine/ports"
 )
 

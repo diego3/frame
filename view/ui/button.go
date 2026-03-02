@@ -5,16 +5,16 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font"
 	"goengine/resource"
+	"golang.org/x/image/font"
 )
 
 // Button is a clickable UI button with a label.
 type Button struct {
-	X, Y          int     // position in logical coordinates
-	Width, Height int     // size
-	Label         string  // text drawn on the button
-	OnClick       func()  // called when the button is clicked (left mouse, just pressed)
+	X, Y          int    // position in logical coordinates
+	Width, Height int    // size
+	Label         string // text drawn on the button
+	OnClick       func() // called when the button is clicked (left mouse, just pressed)
 
 	// Colors (optional; zero value uses defaults)
 	FillColor   color.Color
@@ -24,9 +24,9 @@ type Button struct {
 
 // Default button colors.
 var (
-	DefaultButtonFill   = color.RGBA{60, 60, 80, 255}
-	DefaultButtonHover  = color.RGBA{80, 80, 120, 255}
-	DefaultButtonLabel  = color.White
+	DefaultButtonFill  = color.RGBA{60, 60, 80, 255}
+	DefaultButtonHover = color.RGBA{80, 80, 120, 255}
+	DefaultButtonLabel = color.White
 )
 
 // Contains reports whether the point (x, y) is inside the button.

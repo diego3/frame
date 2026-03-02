@@ -4,9 +4,9 @@ import (
 	"errors"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"goengine/config"
+	"goengine/application/config"
 	"goengine/ports"
-	"goengine/scene"
+	"goengine/view/scene"
 )
 
 // ErrShutdownRequested is returned when the process received SIGINT/SIGTERM and the game loop exited cleanly.

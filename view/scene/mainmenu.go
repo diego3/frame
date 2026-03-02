@@ -3,14 +3,14 @@ package scene
 import (
 	"image/color"
 
-	"goengine/config"
-	"goengine/data"
-	"goengine/object"
+	"goengine/application/config"
+	"goengine/application/data"
 	"goengine/physics"
 	"goengine/physics/box2d"
 	"goengine/ports"
 	"goengine/resource"
-	"goengine/ui"
+	"goengine/object"
+	"goengine/view/ui"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -19,12 +19,12 @@ import (
 
 // MainMenu is the initial scene (title + click me button + data-driven GameObject world).
 type MainMenu struct {
-	titleImg          *ebiten.Image
-	uiFace            font.Face
-	world             *object.World
-	knightController  *KnightController
-	physicsSystem     *PhysicsSystem
-	debugDrawPhysics  bool // F3 toggles collision box overlay
+	titleImg         *ebiten.Image
+	uiFace           font.Face
+	world            *object.World
+	knightController *KnightController
+	physicsSystem    *PhysicsSystem
+	debugDrawPhysics bool // F3 toggles collision box overlay
 }
 
 // NewMainMenu returns a new main menu scene.

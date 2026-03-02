@@ -3,8 +3,8 @@ package ports
 import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
-	"goengine/config"
-	"goengine/ui"
+	"goengine/application/config"
+	"goengine/view/ui"
 	"golang.org/x/image/font"
 )
 

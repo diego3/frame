@@ -5,9 +5,9 @@ import (
 	"image/color"
 	"strings"
 
-	"goengine/object"
 	"goengine/physics"
 	"goengine/ports"
+	"goengine/object"
 )
 
 func init() {
