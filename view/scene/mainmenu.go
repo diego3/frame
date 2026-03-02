@@ -5,19 +5,27 @@ import (
 
 	"goengine/application/config"
 	"goengine/application/data"
+	"goengine/event"
+	"goengine/object"
 	"goengine/physics"
 	"goengine/physics/box2d"
 	"goengine/ports"
 	"goengine/resource"
-	"goengine/object"
 	"goengine/view/ui"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"golang.org/x/image/font"
 )
 
+// MainMenuState holds only simulation data for the main menu. Logic updates it in Update(dt) from intent events;
+// View (Draw) only reads it to present. No rendering or input types.
+type MainMenuState struct {
+	World            *object.World
+	DebugDrawPhysics bool
+}
+
 // MainMenu is the initial scene (title + click me button + data-driven GameObject world).
+// Logic (Update) updates state from intents; View (Draw) reads state and view assets only.
 type MainMenu struct {
 	titleImg         *ebiten.Image
 	uiFace           font.Face
@@ -34,8 +42,31 @@ func NewMainMenu() *MainMenu {
 
 // Setup loads assets and builds the UI. Implements ports.Scene.
 // If config has scene_path set, the world is built from that YAML; otherwise an empty world is used.
-// switcher can be used later to call SwitchTo("other_scene_id") (e.g. from a Start button).
-func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root ports.UIRoot, switcher ports.SceneSwitcher) error {
+// bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
+func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root ports.UIRoot, bus *event.Bus) error {
+	event.Subscribe(bus, func(ev event.DebugOverlayToggled) {
+		m.debugDrawPhysics = !m.debugDrawPhysics
+	})
+	event.Subscribe(bus, func(ev event.MoveRequested) {
+		if m.knightController != nil {
+			m.knightController.PendingMoveX, m.knightController.PendingMoveY = ev.DirX, ev.DirY
+		}
+	})
+	event.Subscribe(bus, func(ev event.DashRequested) {
+		if m.knightController != nil {
+			m.knightController.PendingDash = true
+		}
+	})
+	event.Subscribe(bus, func(ev event.AttackRequested) {
+		if m.knightController != nil {
+			m.knightController.PendingAttack = true
+		}
+	})
+	event.Subscribe(bus, func(ev event.Attack2Requested) {
+		if m.knightController != nil {
+			m.knightController.PendingAttack2 = true
+		}
+	})
 	a := &cfg.Assets
 	if err := loader.LoadFont(a.FontPath); err != nil {
 		return err
@@ -91,10 +122,8 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 }
 
 // Update implements ports.Scene. Runs knight input, physics step, sync, then world update.
+// Debug overlay toggle is driven by DebugOverlayToggled events (F3 is handled in Application layer).
 func (m *MainMenu) Update(dt float64) {
-	if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
-		m.debugDrawPhysics = !m.debugDrawPhysics
-	}
 	if m.world != nil && m.knightController != nil {
 		m.knightController.Update(m.world, dt)
 		if m.physicsSystem != nil {
@@ -105,18 +134,28 @@ func (m *MainMenu) Update(dt float64) {
 	}
 }
 
-// Draw renders the scene. Implements ports.Scene.
+// Draw renders the scene from current state and view assets. Implements ports.Scene.
+// View only reads state (MainMenuState) and does not mutate simulation data.
 func (m *MainMenu) Draw(screen *ebiten.Image) {
+	state := m.state()
 	if m.titleImg != nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(20, 20)
 		screen.DrawImage(m.titleImg, op)
 	}
-	if m.world != nil {
-		m.world.Draw(screen)
-		if m.debugDrawPhysics && m.physicsSystem != nil {
-			m.physicsSystem.DrawDebug(screen, m.world)
+	if state.World != nil {
+		state.World.Draw(screen)
+		if state.DebugDrawPhysics && m.physicsSystem != nil {
+			m.physicsSystem.DrawDebug(screen, state.World)
 		}
+	}
+}
+
+// state returns the current simulation state for the view to read (Logic updates these fields in Update).
+func (m *MainMenu) state() MainMenuState {
+	return MainMenuState{
+		World:           m.world,
+		DebugDrawPhysics: m.debugDrawPhysics,
 	}
 }
 

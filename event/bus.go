@@ -41,6 +41,15 @@ func Emit(b *Bus, ev interface{}) {
 	if ev == nil {
 		return
 	}
+	b.emit(ev)
+}
+
+// Emit delivers the event on this bus. Bus implements Emitter so layers can depend on the narrow interface.
+func (b *Bus) Emit(ev interface{}) {
+	b.emit(ev)
+}
+
+func (b *Bus) emit(ev interface{}) {
 	b.mu.Lock()
 	if !b.delivering {
 		// Start a new delivery run.

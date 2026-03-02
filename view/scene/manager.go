@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"goengine/application/config"
+	"goengine/event"
 	"goengine/ports"
 )
 
@@ -35,7 +36,7 @@ func (m *Manager) Register(id string, factory SceneFactory) {
 
 // SwitchTo creates a new scene from the registered factory for id, calls Setup, and sets it as current.
 // Returns an error if the id is unknown or scene creation/Setup fails.
-func (m *Manager) SwitchTo(id string, cfg *config.Config, loader ports.AssetLoader, ui ports.UIRoot, switcher ports.SceneSwitcher) error {
+func (m *Manager) SwitchTo(id string, cfg *config.Config, loader ports.AssetLoader, ui ports.UIRoot, bus *event.Bus) error {
 	m.mu.Lock()
 	factory, ok := m.factories[id]
 	m.mu.Unlock()
@@ -46,7 +47,7 @@ func (m *Manager) SwitchTo(id string, cfg *config.Config, loader ports.AssetLoad
 	if err != nil {
 		return fmt.Errorf("scene: create %q: %w", id, err)
 	}
-	if err := sc.Setup(cfg, loader, ui, switcher); err != nil {
+	if err := sc.Setup(cfg, loader, ui, bus); err != nil {
 		return fmt.Errorf("scene: setup %q: %w", id, err)
 	}
 	m.mu.Lock()

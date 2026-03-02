@@ -52,6 +52,8 @@ func (m *Manager) ActionPressed(action string) bool {
 var defaultManager = NewManager()
 
 func init() {
+	// Global
+	defaultManager.Bind("debug_overlay", ebiten.KeyF3)
 	// Default bindings for knight demo: toggle run, attack, attack2
 	defaultManager.Bind("toggle_run", ebiten.KeySpace)
 	defaultManager.Bind("dash", ebiten.KeyShiftLeft, ebiten.KeyShiftRight)

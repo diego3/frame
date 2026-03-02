@@ -5,13 +5,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"goengine/application/game"
 	"goengine/application/config"
+	"goengine/application/game"
+	"goengine/event"
 	"goengine/ports"
 	"goengine/resource"
 	"goengine/view/scene"
 	"goengine/view/ui"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // Engine composes config, resources, UI, scene, and game loop. Create with New, then call Run.
@@ -22,11 +24,13 @@ type Engine struct {
 
 // New builds the dependency graph and returns an Engine. cfg must not be nil.
 func New(cfg *config.Config) *Engine {
+	bus := event.NewBus()
 	var loader ports.AssetLoader = resource.NewManager()
 	u := ui.NewContainer()
 	sm := scene.NewManager()
+	// FIXME: this is a problem, add a new scene here is not ideal, it should be data driven
 	sm.Register("main_menu", func() (ports.Scene, error) { return scene.NewMainMenu(), nil })
-	g := game.New(cfg, loader, u, sm, "main_menu")
+	g := game.New(cfg, loader, u, sm, "main_menu", bus)
 	return &Engine{cfg: cfg, game: g}
 }
 

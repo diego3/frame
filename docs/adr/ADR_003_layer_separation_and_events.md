@@ -57,6 +57,8 @@ Details (full event list per layer) are documented separately; this ADR establis
 
 **Outcome:** Scene change and quit are event-driven; no layer holds a reference to SceneSwitcher for those flows.
 
+**Status: implemented**
+
 ### Phase 2 — Full decoupling (medium complexity)
 
 - **Logic vs View split**: Introduce explicit state types per scene (e.g. `MainMenuState`) that only hold simulation data. Logic updates state in `Update(dt)` from intent events; View only reads state and draws. Optionally separate World’s `Draw` behind a view that receives read-only state.
@@ -64,6 +66,8 @@ Details (full event list per layer) are documented separately; this ADR establis
 - **Narrow interfaces**: Pass only `Emitter` / `Subscriber` (or intent-only vs state-only) to each layer so the contract is explicit and testable.
 
 **Outcome:** Application, Game Logic, and Human View are fully decoupled; game rules are independent of input source.
+
+**Status: implemented**
 
 ### Phase 3 — Multiple views (higher complexity)
 

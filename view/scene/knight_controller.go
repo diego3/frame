@@ -3,19 +3,24 @@ package scene
 import (
 	"math"
 
-	"goengine/physics"
-	"goengine/view/input"
 	"goengine/object"
+	"goengine/physics"
 )
 
-// KnightController drives the "knight" object in the world: WASD movement (run when moving left/right, idle otherwise),
-// dash (Shift), attack/attack2 (J/K), and returning to idle when a one-shot attack finishes.
+// KnightController drives the "knight" object in the world from intent events (MoveRequested, DashRequested, etc.).
+// Pending intents are set by event handlers (e.g. MainMenu subscribes to intents and sets these); Update applies them.
 // If the knight has a PhysicsBody, movement is done by setting velocity; otherwise Transform is updated directly.
 type KnightController struct {
-	DashCooldown    float64 // seconds until next dash allowed
-	DashActiveUntil float64 // while > 0 we don't overwrite velocity (so dash impulse is visible)
-	LastMoveX       float64 // last non-zero move direction for dash when not moving
+	DashCooldown    float64
+	DashActiveUntil float64
+	LastMoveX       float64
 	LastMoveY       float64
+
+	// Pending intents (set by intent event handlers, consumed in Update)
+	PendingMoveX, PendingMoveY float64
+	PendingDash                bool
+	PendingAttack              bool
+	PendingAttack2             bool
 }
 
 const (
@@ -26,47 +31,34 @@ const (
 	dashDirNoMove   = 1.0  // when no keys held, dash in LastMove; if never moved, dash right (X=1)
 )
 
-// Update runs one frame of knight gameplay. Moves by WASD, dash on Shift, handles animator input.
+// Update runs one frame of knight gameplay. Uses pending intents (set by intent handlers) and applies to world.
 func (c *KnightController) Update(world *object.World, dt float64) {
 	knight := world.Find("knight")
 	if knight == nil || knight.Animator() == nil {
 		return
 	}
+	// Consume one-shot pendings this frame
+	dash := c.PendingDash
+	attack := c.PendingAttack
+	attack2 := c.PendingAttack2
+	c.PendingDash = false
+	c.PendingAttack = false
+	c.PendingAttack2 = false
+
 	if c.DashCooldown > 0 {
 		c.DashCooldown -= dt
 	}
 	if c.DashActiveUntil > 0 {
 		c.DashActiveUntil -= dt
 	}
-	// Movement: use physics body velocity if present, else direct transform
+	// Movement from pending direction (emitted each frame by input adapter while keys held)
+	vx := c.PendingMoveX * knightSpeed
+	vy := c.PendingMoveY * knightSpeed
+	if c.PendingMoveX != 0 || c.PendingMoveY != 0 {
+		c.LastMoveX, c.LastMoveY = c.PendingMoveX, c.PendingMoveY
+	}
 	if pb := knight.PhysicsBody(); pb != nil {
-		var vx, vy float64
-		if input.ActionPressed("move_left") {
-			vx = -knightSpeed
-			c.LastMoveX, c.LastMoveY = -1, 0
-		}
-		if input.ActionPressed("move_right") {
-			vx = knightSpeed
-			c.LastMoveX, c.LastMoveY = 1, 0
-		}
-		if input.ActionPressed("move_up") {
-			vy = -knightSpeed
-			if vx == 0 {
-				c.LastMoveX, c.LastMoveY = 0, -1
-			} else {
-				c.LastMoveY = -1
-			}
-		}
-		if input.ActionPressed("move_down") {
-			vy = knightSpeed
-			if vx == 0 {
-				c.LastMoveX, c.LastMoveY = 0, 1
-			} else {
-				c.LastMoveY = 1
-			}
-		}
-		// Dash: set velocity in current or last move direction (kinematic bodies ignore impulses)
-		if input.ActionJustPressed("dash") && c.DashCooldown <= 0 {
+		if dash && c.DashCooldown <= 0 {
 			var dx, dy float64
 			if vx != 0 || vy != 0 {
 				len := vx*vx + vy*vy
@@ -88,19 +80,17 @@ func (c *KnightController) Update(world *object.World, dt float64) {
 				knight.ResetAnimation("dash")
 			}
 		}
-		// Don't overwrite velocity during dash window so dash is visible
 		if c.DashActiveUntil <= 0 {
 			pb.Body.SetLinearVelocity(physics.Vec2{X: vx, Y: vy})
 		}
 	}
 
 	anim := knight.Animator()
-	// Attack input (one-shot)
 	switch {
-	case input.ActionJustPressed("attack"):
+	case attack:
 		anim.Play("attack")
 		knight.ResetAnimation("attack")
-	case input.ActionJustPressed("attack2"):
+	case attack2:
 		anim.Play("attack2")
 		knight.ResetAnimation("attack2")
 	}
@@ -112,8 +102,7 @@ func (c *KnightController) Update(world *object.World, dt float64) {
 			}
 		}
 	} else {
-		// Movement drives run vs idle: run when moving left or right, idle otherwise
-		if input.ActionPressed("move_left") || input.ActionPressed("move_right") {
+		if c.PendingMoveX != 0 || c.PendingMoveY != 0 {
 			anim.Play("run")
 		} else {
 			anim.Play("idle")

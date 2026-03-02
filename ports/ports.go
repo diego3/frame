@@ -4,6 +4,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"goengine/application/config"
+	"goengine/event"
 	"goengine/view/ui"
 	"golang.org/x/image/font"
 )
@@ -27,16 +28,11 @@ type UIRoot interface {
 	AddButton(b *ui.Button)
 }
 
-// SceneSwitcher is used by scenes to request a switch to another scene by id.
-// Implemented by the game loop; passed to Scene.Setup so scenes can call SwitchTo(id).
-type SceneSwitcher interface {
-	SwitchTo(sceneID string) error
-}
-
 // Scene represents a game screen (e.g. main menu). Setup is called once with dependencies.
-// switcher may be nil only when the scene manager is not used.
+// bus: scenes emit intents (e.g. SceneChangeRequested, QuitRequested) and subscribe to intent/state events.
+// For emission-only dependencies, prefer event.Emitter or event.IntentEmitter (see event package).
 type Scene interface {
-	Setup(cfg *config.Config, loader AssetLoader, ui UIRoot, switcher SceneSwitcher) error
+	Setup(cfg *config.Config, loader AssetLoader, ui UIRoot, bus *event.Bus) error
 	Update(dt float64)
 	Draw(screen *ebiten.Image)
 	UIFace() font.Face
