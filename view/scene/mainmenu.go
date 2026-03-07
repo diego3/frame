@@ -63,33 +63,6 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 			}
 		}
 	})
-	event.Subscribe(bus, func(ev event.DashRequested) {
-		if m.world != nil {
-			if k := m.world.Find("knight"); k != nil {
-				if c := k.GetComponent("intent_buffer"); c != nil {
-					c.(*object.IntentBuffer).PendingDash = true
-				}
-			}
-		}
-	})
-	event.Subscribe(bus, func(ev event.AttackRequested) {
-		if m.world != nil {
-			if k := m.world.Find("knight"); k != nil {
-				if c := k.GetComponent("intent_buffer"); c != nil {
-					c.(*object.IntentBuffer).PendingAttack = true
-				}
-			}
-		}
-	})
-	event.Subscribe(bus, func(ev event.Attack2Requested) {
-		if m.world != nil {
-			if k := m.world.Find("knight"); k != nil {
-				if c := k.GetComponent("intent_buffer"); c != nil {
-					c.(*object.IntentBuffer).PendingAttack2 = true
-				}
-			}
-		}
-	})
 	event.Subscribe(bus, func(ev event.ScriptEmitted) {
 		if m.vm != nil && m.vm.L != nil {
 			_ = script.CallOnEvent(m.vm.L, ev.Name, ev.Payload)

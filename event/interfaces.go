@@ -33,7 +33,7 @@ func (i *IntentBus) Emit(ev interface{}) {
 	}
 	switch ev.(type) {
 	case SceneChangeRequested, QuitRequested, DebugOverlayToggled,
-		MoveRequested, DashRequested, AttackRequested, Attack2Requested:
+		MoveRequested, ScriptEmitted:
 		i.bus.Emit(ev)
 	}
 }

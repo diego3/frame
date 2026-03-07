@@ -28,15 +28,6 @@ type MoveRequested struct {
 	DirX, DirY float64 // normalized direction, e.g. -1/0/1
 }
 
-// DashRequested is an intent event emitted when the user requests a dash (e.g. Shift just pressed).
-type DashRequested struct{}
-
-// AttackRequested is an intent event emitted when the user requests primary attack (e.g. J just pressed).
-type AttackRequested struct{}
-
-// Attack2Requested is an intent event emitted when the user requests secondary attack (e.g. K just pressed).
-type Attack2Requested struct{}
-
 // GameObjectCreated is emitted when a new GameObject is created and added to a world.
 // ID is a stable identifier; Name is the initial name (may change later).
 type GameObjectCreated struct {

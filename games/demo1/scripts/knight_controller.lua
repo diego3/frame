@@ -1,5 +1,6 @@
 -- Knight controller script. Attach as script component to the "knight" GameObject.
--- Reads intents from self.get_intent; requires intent_buffer component on the same object.
+-- Movement comes from self.get_intent (IntentBuffer filled by MainMenu on MoveRequested).
+-- Dash/attack come from on_event("DashRequested"), etc., for decoupling from scene logic.
 
 local KNIGHT_SPEED = 120
 local DASH_IMPULSE = 280
@@ -12,14 +13,35 @@ local dash_active_until = 0
 local last_move_x = 0
 local last_move_y = 0
 
+-- One-shot intents set by on_event; cleared after read in update()
+local pending_dash = false
+local pending_attack = false
+local pending_attack2 = false
+
+function on_event(name, _payload)
+  if name == "DashRequested" then
+    pending_dash = true
+  elseif name == "AttackRequested" then
+    pending_attack = true
+  elseif name == "Attack2Requested" then
+    pending_attack2 = true
+  end
+end
+
 local function read_intents()
   return {
     move_x = self.get_intent("move_x") or 0,
     move_y = self.get_intent("move_y") or 0,
-    dash = self.get_intent("dash"),
-    attack = self.get_intent("attack"),
-    attack2 = self.get_intent("attack2"),
+    dash = pending_dash,
+    attack = pending_attack,
+    attack2 = pending_attack2,
   }
+end
+
+local function clear_one_shot_intents()
+  pending_dash = false
+  pending_attack = false
+  pending_attack2 = false
 end
 
 local function tick_cooldowns(dt)
@@ -83,6 +105,7 @@ end
 
 function update(dt)
   local intents = read_intents()
+  clear_one_shot_intents()
   tick_cooldowns(dt)
 
   if intents.move_x ~= 0 or intents.move_y ~= 0 then

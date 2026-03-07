@@ -39,13 +39,14 @@ func (a *Adapter) Poll() {
 	}
 	a.emit.Emit(event.MoveRequested{DirX: dirX, DirY: dirY})
 
+	// Knight/demo-specific actions as script events (scripts listen via on_event)
 	if a.mgr.ActionJustPressed("dash") {
-		a.emit.Emit(event.DashRequested{})
+		a.emit.Emit(event.ScriptEmitted{Name: "DashRequested", Payload: nil})
 	}
 	if a.mgr.ActionJustPressed("attack") {
-		a.emit.Emit(event.AttackRequested{})
+		a.emit.Emit(event.ScriptEmitted{Name: "AttackRequested", Payload: nil})
 	}
 	if a.mgr.ActionJustPressed("attack2") {
-		a.emit.Emit(event.Attack2Requested{})
+		a.emit.Emit(event.ScriptEmitted{Name: "Attack2Requested", Payload: nil})
 	}
 }
