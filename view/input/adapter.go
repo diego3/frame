@@ -6,14 +6,21 @@ import (
 
 // Adapter reads keys from a Manager and emits intent events to an IntentEmitter.
 // Call Poll each frame before game logic Update so Logic reacts to intents instead of raw input.
+// ScriptEvents maps input action names to script event names; when an action is just pressed,
+// adapter emits event.ScriptEmitted{Name: eventName}. If nil, no script events are emitted.
 type Adapter struct {
-	mgr *Manager
-	emit event.IntentEmitter
+	mgr          *Manager
+	emit         event.IntentEmitter
+	scriptEvents map[string]string // action -> script event name
 }
 
 // NewAdapter returns an adapter that uses mgr for key state and emits intents to emit.
-func NewAdapter(mgr *Manager, emit event.IntentEmitter) *Adapter {
-	return &Adapter{mgr: mgr, emit: emit}
+// scriptEvents is optional: map input action (e.g. "dash") to script event name (e.g. "DashRequested").
+func NewAdapter(mgr *Manager, emit event.IntentEmitter, scriptEvents map[string]string) *Adapter {
+	if scriptEvents == nil {
+		scriptEvents = make(map[string]string)
+	}
+	return &Adapter{mgr: mgr, emit: emit, scriptEvents: scriptEvents}
 }
 
 // Poll reads current input and emits intent events. Call once per frame from Application/Game Update.
@@ -39,14 +46,13 @@ func (a *Adapter) Poll() {
 	}
 	a.emit.Emit(event.MoveRequested{DirX: dirX, DirY: dirY})
 
-	// Knight/demo-specific actions as script events (scripts listen via on_event)
-	if a.mgr.ActionJustPressed("dash") {
-		a.emit.Emit(event.ScriptEmitted{Name: "DashRequested", Payload: nil})
-	}
-	if a.mgr.ActionJustPressed("attack") {
-		a.emit.Emit(event.ScriptEmitted{Name: "AttackRequested", Payload: nil})
-	}
-	if a.mgr.ActionJustPressed("attack2") {
-		a.emit.Emit(event.ScriptEmitted{Name: "Attack2Requested", Payload: nil})
+	// Data-driven: emit ScriptEmitted for each configured action -> event name
+	for action, eventName := range a.scriptEvents {
+		if eventName == "" {
+			continue
+		}
+		if a.mgr.ActionJustPressed(action) {
+			a.emit.Emit(event.ScriptEmitted{Name: eventName, Payload: nil})
+		}
 	}
 }

@@ -51,19 +51,24 @@ func (m *Manager) ActionPressed(action string) bool {
 // defaultManager is the global instance used by package-level functions.
 var defaultManager = NewManager()
 
+// DefaultBindings returns the default action->keys map. Used to initialize a Manager
+// before applying game config overrides (see ManagerFromConfig).
+func DefaultBindings() map[string][]ebiten.Key {
+	return map[string][]ebiten.Key{
+		"debug_overlay": {ebiten.KeyF3},
+		"toggle_run":    {ebiten.KeySpace},
+		"dash":          {ebiten.KeyShiftLeft, ebiten.KeyShiftRight},
+		"attack":        {ebiten.KeyJ},
+		"attack2":       {ebiten.KeyK},
+		"move_left":     {ebiten.KeyA},
+		"move_right":    {ebiten.KeyD},
+		"move_up":       {ebiten.KeyW},
+		"move_down":     {ebiten.KeyS},
+	}
+}
+
 func init() {
-	// Global
-	defaultManager.Bind("debug_overlay", ebiten.KeyF3)
-	// Default bindings for knight demo: toggle run, attack, attack2
-	defaultManager.Bind("toggle_run", ebiten.KeySpace)
-	defaultManager.Bind("dash", ebiten.KeyShiftLeft, ebiten.KeyShiftRight)
-	defaultManager.Bind("attack", ebiten.KeyJ)
-	defaultManager.Bind("attack2", ebiten.KeyK)
-	// WASD movement
-	defaultManager.Bind("move_left", ebiten.KeyA)
-	defaultManager.Bind("move_right", ebiten.KeyD)
-	defaultManager.Bind("move_up", ebiten.KeyW)
-	defaultManager.Bind("move_down", ebiten.KeyS)
+	defaultManager.SetBindings(DefaultBindings())
 }
 
 // ActionJustPressed reports whether any key for the given action was just pressed (uses default manager).

@@ -10,11 +10,13 @@ import (
 // Config holds engine and window settings loaded from YAML.
 // GameRoot is the directory of the config file; asset/scene paths are relative to it.
 type Config struct {
-	GameRoot string  `yaml:"-"` // set from config file path (e.g. "games/demo1")
-	Window   Window  `yaml:"window"`
-	Layout   Layout  `yaml:"layout"`
-	Assets   Assets  `yaml:"assets"`
-	Physics  Physics `yaml:"physics"`
+	GameRoot     string            `yaml:"-"` // set from config file path (e.g. "games/demo1")
+	Window       Window            `yaml:"window"`
+	Layout       Layout            `yaml:"layout"`
+	Assets       Assets            `yaml:"assets"`
+	Physics      Physics           `yaml:"physics"`
+	Input        map[string]any    `yaml:"input"`         // optional: action name -> key name(s), e.g. "dash": "ShiftLeft" or "move_left": ["A", "Left"]
+	ScriptEvents map[string]string `yaml:"script_events"`  // optional: input action -> script event name, e.g. "dash": "DashRequested"
 }
 
 // Physics holds parameters for the physics simulation (e.g. Box2D).

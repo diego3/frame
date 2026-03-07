@@ -25,3 +25,21 @@ physics:
   gravity_x: 0      # game units/s² (usually 0)
   gravity_y: 800    # game units/s² (positive = down)
   pixel_scale: 64  # game units per meter
+
+# Input: action name -> key name(s). Keys can be a string or list (e.g. [ShiftLeft, ShiftRight]).
+# Omit to use engine defaults. Key names: A-Z, 0-9, Space, ShiftLeft, ShiftRight, Left, Right, Up, Down, F1-F12, etc.
+input:
+  debug_overlay: F3
+  move_left: A
+  move_right: D
+  move_up: W
+  move_down: S
+  dash: [ShiftLeft, ShiftRight]
+  attack: J
+  attack2: K
+
+# Script events: when an input action is pressed, emit ScriptEmitted with this name so Lua on_event(name, payload) receives it.
+script_events:
+  dash: "DashRequested"
+  attack: "AttackRequested"
+  attack2: "Attack2Requested"

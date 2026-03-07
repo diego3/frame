@@ -37,8 +37,21 @@ type Game struct {
 
 // New returns a new Game with the given dependencies. initialSceneID is the scene to load in Init() (e.g. "main_menu").
 // bus is the event bus: Game subscribes to SceneChangeRequested and QuitRequested and passes bus to scenes.
-// Input adapter polls keys and emits intents (MoveRequested, DebugOverlayToggled, etc.) so Logic does not read input directly.
+// Input adapter uses bindings from cfg.Input (overriding defaults) and cfg.ScriptEvents for script event names.
 func New(cfg *config.Config, loader ports.AssetLoader, ui ports.UIRoot, manager *scene.Manager, initialSceneID string, bus *event.Bus) *Game {
+	mgr := input.NewManager()
+	mgr.SetBindings(input.DefaultBindings())
+	if cfg != nil && len(cfg.Input) > 0 {
+		if parsed, err := input.ParseBindings(cfg.Input); err == nil {
+			for action, keys := range parsed {
+				mgr.Bind(action, keys...)
+			}
+		}
+	}
+	scriptEvents := cfg.ScriptEvents
+	if scriptEvents == nil {
+		scriptEvents = make(map[string]string)
+	}
 	g := &Game{
 		cfg:            cfg,
 		loader:         loader,
@@ -46,7 +59,7 @@ func New(cfg *config.Config, loader ports.AssetLoader, ui ports.UIRoot, manager 
 		manager:        manager,
 		initialSceneID: initialSceneID,
 		bus:            bus,
-		inputAdapter:   input.NewAdapter(input.DefaultManager(), event.NewIntentBus(bus)),
+		inputAdapter:   input.NewAdapter(mgr, event.NewIntentBus(bus), scriptEvents),
 		quitCh:         make(chan struct{}),
 	}
 	event.Subscribe(bus, func(ev event.SceneChangeRequested) {
