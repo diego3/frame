@@ -11,10 +11,13 @@ import (
 	"goengine/physics/box2d"
 	"goengine/ports"
 	"goengine/resource"
+	"goengine/script"
 	"goengine/view/ui"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"golang.org/x/image/font"
+
+	lua "github.com/yuin/gopher-lua"
 )
 
 // MainMenuState holds only simulation data for the main menu. Logic updates it in Update(dt) from intent events;
@@ -25,14 +28,15 @@ type MainMenuState struct {
 }
 
 // MainMenu is the initial scene (title + click me button + data-driven GameObject world).
-// Logic (Update) updates state from intents; View (Draw) reads state and view assets only.
+// Logic (Update) runs script components (shared VM per scene), then physics, then world update.
 type MainMenu struct {
 	titleImg         *ebiten.Image
 	uiFace           font.Face
 	world            *object.World
-	knightController *KnightController
+	vm               *script.VM
+	loadedScripts    map[string]bool // path -> true once DoFile'd
 	physicsSystem    *PhysicsSystem
-	debugDrawPhysics bool // F3 toggles collision box overlay
+	debugDrawPhysics bool
 }
 
 // NewMainMenu returns a new main menu scene.
@@ -48,25 +52,55 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		m.debugDrawPhysics = !m.debugDrawPhysics
 	})
 	event.Subscribe(bus, func(ev event.MoveRequested) {
-		if m.knightController != nil {
-			m.knightController.PendingMoveX, m.knightController.PendingMoveY = ev.DirX, ev.DirY
+		if m.world != nil {
+			if k := m.world.Find("knight"); k != nil {
+				if c := k.GetComponent("intent_buffer"); c != nil {
+					ib := c.(*object.IntentBuffer)
+					ib.PendingMoveX, ib.PendingMoveY = ev.DirX, ev.DirY
+				}
+			}
 		}
 	})
 	event.Subscribe(bus, func(ev event.DashRequested) {
-		if m.knightController != nil {
-			m.knightController.PendingDash = true
+		if m.world != nil {
+			if k := m.world.Find("knight"); k != nil {
+				if c := k.GetComponent("intent_buffer"); c != nil {
+					c.(*object.IntentBuffer).PendingDash = true
+				}
+			}
 		}
 	})
 	event.Subscribe(bus, func(ev event.AttackRequested) {
-		if m.knightController != nil {
-			m.knightController.PendingAttack = true
+		if m.world != nil {
+			if k := m.world.Find("knight"); k != nil {
+				if c := k.GetComponent("intent_buffer"); c != nil {
+					c.(*object.IntentBuffer).PendingAttack = true
+				}
+			}
 		}
 	})
 	event.Subscribe(bus, func(ev event.Attack2Requested) {
-		if m.knightController != nil {
-			m.knightController.PendingAttack2 = true
+		if m.world != nil {
+			if k := m.world.Find("knight"); k != nil {
+				if c := k.GetComponent("intent_buffer"); c != nil {
+					c.(*object.IntentBuffer).PendingAttack2 = true
+				}
+			}
 		}
 	})
+
+	m.vm = script.NewVM()
+	m.loadedScripts = make(map[string]bool)
+	playSound := func(path string) {
+		_ = loader.LoadAudio(path)
+		if p, err := loader.NewAudioPlayer(path); err == nil {
+			p.Play()
+		}
+	}
+	switchScene := func(sceneID string) { bus.Emit(event.SceneChangeRequested{SceneID: sceneID}) }
+	quit := func() { bus.Emit(event.QuitRequested{}) }
+	m.vm.RegisterEngine("engine", script.EngineFuncs(playSound, switchScene, quit))
+
 	a := &cfg.Assets
 	if err := loader.LoadFont(a.FontPath); err != nil {
 		return err
@@ -107,31 +141,68 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	}
 
 	// Physics (anti-corruption: only box2d import here; game code uses physics.* only)
-	// Bodies are created from scene data: objects with physics_body component get a body in InitFromWorld.
 	if m.world != nil {
-		m.knightController = &KnightController{}
 		gravity := physics.Vec2{X: cfg.Physics.GravityX, Y: cfg.Physics.GravityY}
 		pixelScale := cfg.Physics.PixelScale
 		physWorld := box2d.NewWorld(gravity, pixelScale)
 		m.physicsSystem = NewPhysicsSystem(physWorld)
 		m.physicsSystem.InitFromWorld(m.world)
 		m.physicsSystem.LogBodies()
+
+		// Attach script component + intent buffer to knight so Lua drives it
+		if k := m.world.Find("knight"); k != nil {
+			k.AddComponent(&object.IntentBuffer{})
+			k.AddComponent(&object.Script{
+				Path:          "scripts/knight_controller.lua",
+				UpdateFuncName: "update",
+			})
+		}
 	}
 
 	return nil
 }
 
-// Update implements ports.Scene. Runs knight input, physics step, sync, then world update.
-// Debug overlay toggle is driven by DebugOverlayToggled events (F3 is handled in Application layer).
+// Update implements ports.Scene. Runs script components (shared VM), then physics step, sync, world update.
 func (m *MainMenu) Update(dt float64) {
-	if m.world != nil && m.knightController != nil {
-		m.knightController.Update(m.world, dt)
-		if m.physicsSystem != nil {
-			m.physicsSystem.Step(dt)
-			m.physicsSystem.SyncToWorld(m.world)
-		}
-		m.world.Update(dt)
+	if m.world == nil || m.vm == nil {
+		return
 	}
+	// Run script updates for every GameObject with a script component
+	for _, go_ := range m.world.Objects() {
+		if !go_.Active {
+			continue
+		}
+		sc := go_.GetComponent("script")
+		if sc == nil {
+			continue
+		}
+		s, ok := sc.(*object.Script)
+		if !ok || s.Path == "" {
+			continue
+		}
+		if !m.loadedScripts[s.Path] {
+			if err := m.vm.DoFile(s.Path); err != nil {
+				continue
+			}
+			m.loadedScripts[s.Path] = true
+		}
+		funcName := s.UpdateFuncName
+		if funcName == "" {
+			funcName = "update"
+		}
+		script.SetSelf(m.vm.L, go_)
+		if _, err := m.vm.CallFunc(funcName, lua.LNumber(dt)); err != nil {
+			continue
+		}
+		if ib := go_.GetComponent("intent_buffer"); ib != nil {
+			ib.(*object.IntentBuffer).ClearOneShot()
+		}
+	}
+	if m.physicsSystem != nil {
+		m.physicsSystem.Step(dt)
+		m.physicsSystem.SyncToWorld(m.world)
+	}
+	m.world.Update(dt)
 }
 
 // Draw renders the scene from current state and view assets. Implements ports.Scene.
