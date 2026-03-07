@@ -18,6 +18,8 @@ func init() {
 	RegisterComponentBuilder("block", buildBlock)
 	RegisterComponentBuilder("ball", buildBall)
 	RegisterComponentBuilder("physics_body", buildPhysicsBody)
+	RegisterComponentBuilder("script", buildScript)
+	RegisterComponentBuilder("intent_buffer", buildIntentBuffer)
 }
 
 func buildTransform(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
@@ -209,4 +211,23 @@ func buildPhysicsBody(params map[string]interface{}, _ ports.AssetLoader) (objec
 		Restitution: restitution,
 		Friction:    friction,
 	}, nil
+}
+
+func buildScript(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+	path, err := stringParam(params, "path")
+	if err != nil || path == "" {
+		return nil, fmt.Errorf("script: path required")
+	}
+	updateFunc, _ := stringParam(params, "update_func")
+	if updateFunc == "" {
+		updateFunc = "update"
+	}
+	return &object.Script{
+		Path:           path,
+		UpdateFuncName: updateFunc,
+	}, nil
+}
+
+func buildIntentBuffer(_ map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+	return &object.IntentBuffer{}, nil
 }

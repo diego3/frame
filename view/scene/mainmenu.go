@@ -148,15 +148,6 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		m.physicsSystem = NewPhysicsSystem(physWorld)
 		m.physicsSystem.InitFromWorld(m.world)
 		m.physicsSystem.LogBodies()
-
-		// Attach script component + intent buffer to knight so Lua drives it
-		if k := m.world.Find("knight"); k != nil {
-			k.AddComponent(&object.IntentBuffer{})
-			k.AddComponent(&object.Script{
-				Path:          "scripts/knight_controller.lua",
-				UpdateFuncName: "update",
-			})
-		}
 	}
 
 	return nil
@@ -168,6 +159,7 @@ func (m *MainMenu) Update(dt float64) {
 		return
 	}
 	// Run script updates for every GameObject with a script component
+	// FIXME: can be refactored, only scripting stuffs in the middle of the update method
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active {
 			continue
@@ -225,7 +217,7 @@ func (m *MainMenu) Draw(screen *ebiten.Image) {
 // state returns the current simulation state for the view to read (Logic updates these fields in Update).
 func (m *MainMenu) state() MainMenuState {
 	return MainMenuState{
-		World:           m.world,
+		World:            m.world,
 		DebugDrawPhysics: m.debugDrawPhysics,
 	}
 }

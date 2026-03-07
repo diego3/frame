@@ -4,6 +4,8 @@
 # Physics_body: body_type; width/height in same units as sprites (e.g. pixels). Box top-left = sprite
 #   top-left unless offset_x/y shift it. Sprite frame is 120x80; use height 80 to match. If the drawn
 #   character is narrower, use smaller width and offset_x to center: e.g. width 50, offset_x 35 (= (120-50)/2).
+# Script: path (Lua file), optional update_func (default "update"). Scene runs script each frame.
+# Intent_buffer: no params; receives input intents from the event bus for script-driven control.
 
 objects:
   - name: ball
@@ -60,6 +62,10 @@ objects:
       - type: transform
         x: 100
         y: 200
+      - type: intent_buffer
+      - type: script
+        path: "scripts/knight_controller.lua"
+        update_func: "update"
       - type: physics_body
         body_type: kinematic
         width: 50

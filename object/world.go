@@ -72,6 +72,8 @@ func (w *World) Draw(screen *ebiten.Image) {
 		if !go_.Active {
 			continue
 		}
+		// FIXME: this animator IF is leaking logic over here, should be refactored
+		//  to be encapsuled in an Animator class or some kind of AnimatorManager
 		transform := go_.Transform()
 		anim := go_.Animator()
 		if anim != nil && anim.Current != "" {
