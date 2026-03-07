@@ -4,20 +4,20 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// World holds GameObjects and runs Update/Draw each frame.
-type World struct {
+// Manager holds GameObjects and runs Update/Draw each frame.
+type Manager struct {
 	gameObjects []*GameObject
 }
 
-// NewWorld returns an empty world.
-func NewWorld() *World {
-	return &World{
+// NewManager returns an empty manager.
+func NewManager() *Manager {
+	return &Manager{
 		gameObjects: nil,
 	}
 }
 
-// Add adds a GameObject to the world.
-func (w *World) Add(go_ *GameObject) {
+// Add adds a GameObject to the manager.
+func (w *Manager) Add(go_ *GameObject) {
 	if go_ == nil {
 		return
 	}
@@ -25,7 +25,7 @@ func (w *World) Add(go_ *GameObject) {
 }
 
 // Find returns the first GameObject with the given name, or nil.
-func (w *World) Find(name string) *GameObject {
+func (w *Manager) Find(name string) *GameObject {
 	for _, go_ := range w.gameObjects {
 		if go_.Name == name {
 			return go_
@@ -34,14 +34,14 @@ func (w *World) Find(name string) *GameObject {
 	return nil
 }
 
-// Objects returns all GameObjects in the world (read-only iteration).
-func (w *World) Objects() []*GameObject {
+// Objects returns all GameObjects in the manager (read-only iteration).
+func (w *Manager) Objects() []*GameObject {
 	return w.gameObjects
 }
 
 // Update runs Update(dt) on Updater components of active GameObjects.
 // If a GameObject has an Animator, only the spritesheet matching Animator.Current is updated (so only one animation advances).
-func (w *World) Update(dt float64) {
+func (w *Manager) Update(dt float64) {
 	for _, go_ := range w.gameObjects {
 		if !go_.Active {
 			continue
@@ -67,7 +67,7 @@ func (w *World) Update(dt float64) {
 // Draw runs Draw(screen, transform) on Drawer components of active GameObjects.
 // If a GameObject has an Animator, only the spritesheet matching Animator.Current is drawn ("spritesheet:"+Current).
 // Otherwise all Drawer components are drawn.
-func (w *World) Draw(screen *ebiten.Image) {
+func (w *Manager) Draw(screen *ebiten.Image) {
 	for _, go_ := range w.gameObjects {
 		if !go_.Active {
 			continue

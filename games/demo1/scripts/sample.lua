@@ -1,17 +1,15 @@
 -- Sample script callable from the engine (Option 1: Pure Go Lua VM, ADR-005).
--- From Go: game.ScriptVM():DoFile("scripts/sample.lua") or DoString(...).
+-- From Go: game.ScriptVM():DoFile("scripts/sample.lua") (path relative to game root, e.g. games/demo1).
 -- Engine API:
 --   engine.play_sound(path)   -- play a WAV (path must be loaded)
 --   engine.switch_scene(id)   -- request scene change
 --   engine.quit()             -- request application exit
---   engine.emit(name, payload) -- fire ScriptEmitted event (payload = table)
+--   engine.emit(name, payload) -- fire ScriptEmitted event (payload = table, e.g. { item_id = "sword" })
 
--- Listen to script events: define global on_event(name, payload).
--- function on_event(name, payload)
---   if name == "ScoreChanged" then
---     local score = payload.score
---   end
--- end
+-- Example: call engine from Lua
+-- engine.play_sound("assets/click.wav")
+-- engine.switch_scene("main_menu")
+-- engine.quit()
 
 -- Define a function that Go can call via VM.CallFunc("on_trigger", ...)
 function on_trigger(obj_name)

@@ -44,12 +44,12 @@ func LoadScene(path string) (*SceneDef, error) {
 	return &def, nil
 }
 
-// BuildWorld creates an object.World from a scene definition, using the loader for images.
-func BuildWorld(def *SceneDef, loader ports.AssetLoader) (*object.World, error) {
+// BuildWorld creates an object.Manager from a scene definition, using the loader for images.
+func BuildWorld(def *SceneDef, loader ports.AssetLoader) (*object.Manager, error) {
 	if def == nil {
-		return object.NewWorld(), nil
+		return object.NewManager(), nil
 	}
-	world := object.NewWorld()
+	world := object.NewManager()
 	for _, o := range def.Objects {
 		obj := object.NewGameObject(o.Name)
 		if o.Active != nil && !*o.Active {

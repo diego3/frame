@@ -16,6 +16,7 @@ func TestVM_DoString(t *testing.T) {
 		func(path string) {},
 		func(sceneID string) {},
 		func() { called = true },
+		func(name string, payload map[string]interface{}) {},
 	))
 
 	if err := vm.DoString(`engine.quit()`); err != nil {
@@ -34,6 +35,7 @@ func TestVM_DoString_script_error(t *testing.T) {
 		func(string) {},
 		func(string) {},
 		func() {},
+		func(string, map[string]interface{}) {},
 	))
 
 	err := vm.DoString(`syntax error here`)
@@ -59,5 +61,66 @@ func TestVM_CallFunc(t *testing.T) {
 	}
 	if n, ok := ret[0].(lua.LNumber); !ok || float64(n) != 5 {
 		t.Errorf("expected 5, got %v", ret[0])
+	}
+}
+
+func TestVM_engine_emit(t *testing.T) {
+	vm := NewVM()
+	defer vm.Close()
+
+	var gotName string
+	var gotPayload map[string]interface{}
+	vm.RegisterEngine("engine", EngineFuncs(
+		func(string) {},
+		func(string) {},
+		func() {},
+		func(name string, payload map[string]interface{}) {
+			gotName = name
+			gotPayload = payload
+		},
+	))
+
+	err := vm.DoString(`engine.emit("ItemCollected", { item_id = "sword", count = 1 })`)
+	if err != nil {
+		t.Fatalf("DoString: %v", err)
+	}
+	if gotName != "ItemCollected" {
+		t.Errorf("got name %q", gotName)
+	}
+	if gotPayload["item_id"] != "sword" || gotPayload["count"] != float64(1) {
+		t.Errorf("got payload %v", gotPayload)
+	}
+}
+
+func TestVM_CallOnEvent(t *testing.T) {
+	vm := NewVM()
+	defer vm.Close()
+
+	var gotName string
+	if err := vm.DoString(`
+		function on_event(name, payload)
+			-- store in globals for test to read via Lua
+			_event_name = name
+			_event_payload = payload
+		end
+	`); err != nil {
+		t.Fatalf("DoString: %v", err)
+	}
+
+	err := CallOnEvent(vm.L, "ScoreChanged", map[string]interface{}{"score": float64(100)})
+	if err != nil {
+		t.Fatalf("CallOnEvent: %v", err)
+	}
+	gotName = vm.L.GetGlobal("_event_name").String()
+	if gotName != "ScoreChanged" {
+		t.Errorf("got name %q", gotName)
+	}
+	tbl, ok := vm.L.GetGlobal("_event_payload").(*lua.LTable)
+	if !ok {
+		t.Fatal("_event_payload is not a table")
+	}
+	scoreVal := vm.L.GetField(tbl, "score")
+	if num, ok := scoreVal.(lua.LNumber); !ok || float64(num) != 100 {
+		t.Errorf("payload.score = %v", scoreVal)
 	}
 }

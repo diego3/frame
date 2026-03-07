@@ -10,7 +10,9 @@ import (
 )
 
 // AssetLoader loads and caches game assets. Implemented by resource.Manager.
+// SetRoot sets the base path for relative asset paths (e.g. game folder "games/demo1").
 type AssetLoader interface {
+	SetRoot(root string)
 	LoadImage(path string) (*ebiten.Image, error)
 	LoadFont(path string) error
 	GetFace(path string, size float64) (font.Face, error)

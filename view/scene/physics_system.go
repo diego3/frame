@@ -5,8 +5,8 @@ import (
 	"image/color"
 	"log"
 
-	"goengine/physics"
 	"goengine/object"
+	"goengine/physics"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -14,11 +14,11 @@ import (
 
 // kinematicEntry stores a body, size, and offset for syncing position back to Transform.
 type kinematicEntry struct {
-	body        physics.Body
-	width       float64
-	height      float64
-	offsetX     float64
-	offsetY     float64
+	body    physics.Body
+	width   float64
+	height  float64
+	offsetX float64
+	offsetY float64
 }
 
 // staticDebugInfo stores position/size of a static body for debug draw and logging.
@@ -47,7 +47,7 @@ func NewPhysicsSystem(world physics.World) *PhysicsSystem {
 
 // CreateKinematicBody creates a kinematic body for the named object and adds a PhysicsBody component.
 // Position is taken from the object's Transform (top-left); body uses center. Width/Height in game units.
-func (s *PhysicsSystem) CreateKinematicBody(objectWorld *object.World, name string, width, height float64) error {
+func (s *PhysicsSystem) CreateKinematicBody(objectWorld *object.Manager, name string, width, height float64) error {
 	obj := objectWorld.Find(name)
 	if obj == nil {
 		return nil
@@ -88,7 +88,7 @@ func (s *PhysicsSystem) CreateStaticBody(center physics.Vec2, width, height floa
 // InitFromWorld creates physics bodies for all objects that have a PhysicsBody component with Body==nil
 // (e.g. loaded from YAML). Uses Transform for position (top-left -> center). For static bodies with
 // Width/Height zero, uses the Block component's size if present.
-func (s *PhysicsSystem) InitFromWorld(objectWorld *object.World) {
+func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 	for _, obj := range objectWorld.Objects() {
 		pb := obj.PhysicsBody()
 		if pb == nil || pb.Body != nil {
@@ -188,7 +188,7 @@ func (s *PhysicsSystem) DebugSummary() string {
 
 // DrawDebug draws collision box outlines in game coordinates (kinematic/dynamic=green, static=red).
 // Moving bodies are drawn at the object's transform (sprite position) so the box aligns with the sprite.
-func (s *PhysicsSystem) DrawDebug(screen *ebiten.Image, objectWorld *object.World) {
+func (s *PhysicsSystem) DrawDebug(screen *ebiten.Image, objectWorld *object.Manager) {
 	const strokeWidth = 2.0
 	for name, entry := range s.kinematicBodies {
 		var x, y float32
@@ -222,9 +222,9 @@ func (s *PhysicsSystem) Step(dt float64) {
 }
 
 // SyncToWorld copies kinematic body positions (center) to the corresponding GameObjects' Transforms (top-left).
-func (s *PhysicsSystem) SyncToWorld(objectWorld *object.World) {
+func (s *PhysicsSystem) SyncToWorld(objectManager *object.Manager) {
 	for name, entry := range s.kinematicBodies {
-		obj := objectWorld.Find(name)
+		obj := objectManager.Find(name)
 		if obj == nil {
 			continue
 		}

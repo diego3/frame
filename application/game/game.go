@@ -74,6 +74,7 @@ func (g *Game) Init() error {
 		g.playSound,
 		g.switchScene,
 		g.quit,
+		g.emitScript,
 	))
 	if err := g.manager.SwitchTo(g.initialSceneID, g.cfg, g.loader, g.ui, g.bus); err != nil {
 		return err
@@ -97,6 +98,11 @@ func (g *Game) switchScene(sceneID string) {
 // quit emits QuitRequested so the application exits. Used by Lua engine.quit().
 func (g *Game) quit() {
 	g.bus.Emit(event.QuitRequested{})
+}
+
+// emitScript emits ScriptEmitted so scripts can fire custom events via engine.emit(name, payload).
+func (g *Game) emitScript(name string, payload map[string]interface{}) {
+	g.bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
 }
 
 // Shutdown runs when the game exits. Releases loaded resources and closes the script VM.

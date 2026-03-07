@@ -79,3 +79,20 @@ func (v *VM) Close() {
 		v.L = nil
 	}
 }
+
+// CallOnEvent invokes the global Lua function on_event(name, payload) if it exists.
+// Use when delivering ScriptEmitted to the VM so scripts can react via function on_event(name, payload).
+// Payload is converted to a Lua table. If on_event is not defined or not a function, does nothing.
+func CallOnEvent(L *lua.LState, name string, payload map[string]interface{}) error {
+	fn := L.GetGlobal("on_event")
+	if fn.Type() != lua.LTFunction {
+		return nil
+	}
+	L.Push(fn)
+	L.Push(lua.LString(name))
+	L.Push(mapToLuaTable(L, payload))
+	if err := L.PCall(2, 0, nil); err != nil {
+		return fmt.Errorf("on_event: %w", err)
+	}
+	return nil
+}

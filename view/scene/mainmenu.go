@@ -2,6 +2,7 @@ package scene
 
 import (
 	"image/color"
+	"path/filepath"
 
 	"goengine/application/config"
 	"goengine/application/data"
@@ -23,7 +24,7 @@ import (
 // MainMenuState holds only simulation data for the main menu. Logic updates it in Update(dt) from intent events;
 // View (Draw) only reads it to present. No rendering or input types.
 type MainMenuState struct {
-	World            *object.World
+	World            *object.Manager
 	DebugDrawPhysics bool
 }
 
@@ -32,9 +33,10 @@ type MainMenuState struct {
 type MainMenu struct {
 	titleImg         *ebiten.Image
 	uiFace           font.Face
-	world            *object.World
+	world            *object.Manager
 	vm               *script.VM
 	loadedScripts    map[string]bool // path -> true once DoFile'd
+	gameRoot         string          // base path for script DoFile (e.g. "games/demo1")
 	physicsSystem    *PhysicsSystem
 	debugDrawPhysics bool
 }
@@ -88,7 +90,16 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 			}
 		}
 	})
+	event.Subscribe(bus, func(ev event.ScriptEmitted) {
+		if m.vm != nil && m.vm.L != nil {
+			_ = script.CallOnEvent(m.vm.L, ev.Name, ev.Payload)
+		}
+	})
 
+	m.gameRoot = cfg.GameRoot
+	if setter, ok := loader.(interface{ SetRoot(string) }); ok {
+		setter.SetRoot(cfg.GameRoot)
+	}
 	m.vm = script.NewVM()
 	m.loadedScripts = make(map[string]bool)
 	playSound := func(path string) {
@@ -99,7 +110,10 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	}
 	switchScene := func(sceneID string) { bus.Emit(event.SceneChangeRequested{SceneID: sceneID}) }
 	quit := func() { bus.Emit(event.QuitRequested{}) }
-	m.vm.RegisterEngine("engine", script.EngineFuncs(playSound, switchScene, quit))
+	emit := func(name string, payload map[string]interface{}) {
+		bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
+	}
+	m.vm.RegisterEngine("engine", script.EngineFuncs(playSound, switchScene, quit, emit))
 
 	a := &cfg.Assets
 	if err := loader.LoadFont(a.FontPath); err != nil {
@@ -126,9 +140,13 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		},
 	})
 
-	// Data-driven world: load scene from YAML if path set
+	// Data-driven world: load scene from YAML if path set (path relative to game root)
 	if a.ScenePath != "" {
-		def, err := data.LoadScene(a.ScenePath)
+		scenePath := a.ScenePath
+		if m.gameRoot != "" {
+			scenePath = filepath.Join(m.gameRoot, scenePath)
+		}
+		def, err := data.LoadScene(scenePath)
 		if err != nil {
 			return err
 		}
@@ -137,7 +155,7 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 			return err
 		}
 	} else {
-		m.world = object.NewWorld()
+		m.world = object.NewManager()
 	}
 
 	// Physics (anti-corruption: only box2d import here; game code uses physics.* only)
@@ -173,7 +191,11 @@ func (m *MainMenu) Update(dt float64) {
 			continue
 		}
 		if !m.loadedScripts[s.Path] {
-			if err := m.vm.DoFile(s.Path); err != nil {
+			scriptPath := s.Path
+			if m.gameRoot != "" {
+				scriptPath = filepath.Join(m.gameRoot, scriptPath)
+			}
+			if err := m.vm.DoFile(scriptPath); err != nil {
 				continue
 			}
 			m.loadedScripts[s.Path] = true

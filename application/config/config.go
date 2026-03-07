@@ -2,16 +2,19 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds engine and window settings loaded from YAML.
+// GameRoot is the directory of the config file; asset/scene paths are relative to it.
 type Config struct {
-	Window  Window  `yaml:"window"`
-	Layout  Layout  `yaml:"layout"`
-	Assets  Assets  `yaml:"assets"`
-	Physics Physics `yaml:"physics"`
+	GameRoot string  `yaml:"-"` // set from config file path (e.g. "games/demo1")
+	Window   Window  `yaml:"window"`
+	Layout   Layout  `yaml:"layout"`
+	Assets   Assets  `yaml:"assets"`
+	Physics  Physics `yaml:"physics"`
 }
 
 // Physics holds parameters for the physics simulation (e.g. Box2D).
@@ -44,9 +47,10 @@ type Layout struct {
 	Height int `yaml:"height"`
 }
 
-// Default returns a config with sensible defaults.
+// Default returns a config with sensible defaults. GameRoot is set to "games/demo1".
 func Default() *Config {
 	return &Config{
+		GameRoot: "games/demo1",
 		Window: Window{
 			Width:  640,
 			Height: 480,
@@ -71,6 +75,7 @@ func Default() *Config {
 
 // Load reads config from path. If the file is missing, returns Default().
 // If the file exists but is invalid, returns an error.
+// GameRoot is set to the directory of path (e.g. "games/demo1" for "games/demo1/config.yaml").
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -80,6 +85,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg := Default()
+	cfg.GameRoot = filepath.Dir(path)
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}

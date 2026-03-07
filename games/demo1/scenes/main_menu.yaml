@@ -8,6 +8,10 @@
 # Intent_buffer: no params; receives input intents from the event bus for script-driven control.
 
 objects:
+  - name: gamelogic
+    components:
+      - type: script
+        path: "scripts/knight_gamelogic.lua"
   - name: ball
     components:
       - type: transform

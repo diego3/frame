@@ -72,3 +72,11 @@ type ComponentRemoved struct {
 	GameObjectID  uint64
 	ComponentType string
 }
+
+// ScriptEmitted is a generic event fired by scripts via engine.emit(name, payload).
+// Subscribers can listen for event.ScriptEmitted and filter by Name, or subscribe to specific names.
+// Payload is a flat or nested map of string keys to values (string, number, bool, or map[string]interface{}).
+type ScriptEmitted struct {
+	Name    string
+	Payload map[string]interface{}
+}

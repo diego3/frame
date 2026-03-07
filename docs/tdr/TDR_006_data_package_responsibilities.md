@@ -22,7 +22,7 @@ This is manageable today, but the package is at risk of becoming a catch-all for
   - Implements `LoadScene` (YAML file reading and unmarshalling).
   - Implements `BuildWorld`, which:
     - Iterates objects and components.
-    - Uses global `builders` map and the `ComponentBuilder` type to construct components and add them to `object.World`.
+    - Uses global `builders` map and the `ComponentBuilder` type to construct components and add them to `object.Manager`.
 - `data/builders.go`:
   - Registers multiple builders in `init()`.
   - Contains all concrete builder implementations for components like `transform`, `sprite`, `spritesheet`, `animator`, `block`, `ball`, `physics_body`.
@@ -35,7 +35,7 @@ All of this lives in one package, which is convenient but closely couples disk I
 
 Clarify and, where helpful, separate **load vs build** responsibilities within the `data` package:
 
-- Keep the external API simple (e.g. a function that takes a path and returns a built `object.World`), but internally:
+- Keep the external API simple (e.g. a function that takes a path and returns a built `object.Manager`), but internally:
   - Keep YAML schema definitions (structs and tags) clearly grouped.
   - Isolate file I/O and parsing (`LoadScene`) from construction (`BuildWorld`).
   - Organize builders logically (e.g. visual, physics, gameplay) or across multiple files if the list grows large.

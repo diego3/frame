@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -20,13 +21,22 @@ import (
 const defaultSampleRate = 44100
 
 // Manager loads and caches game assets. Safe for concurrent use.
+// Root is prepended to relative paths when set (e.g. "games/demo1").
 type Manager struct {
 	mu         sync.RWMutex
+	root       string
 	images     map[string]*ebiten.Image
 	audioBytes map[string][]byte
 	audioCtx   *audio.Context
 	fonts      map[string]*opentype.Font
 	faces      map[string]font.Face
+}
+
+// SetRoot sets the base path for relative asset paths. Paths passed to Load* are joined with root.
+func (m *Manager) SetRoot(root string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.root = root
 }
 
 // NewManager returns a new resource manager.
@@ -39,10 +49,21 @@ func NewManager() *Manager {
 	}
 }
 
+func (m *Manager) resolve(path string) string {
+	m.mu.RLock()
+	root := m.root
+	m.mu.RUnlock()
+	if root == "" {
+		return path
+	}
+	return filepath.Join(root, path)
+}
+
 // LoadImage loads an image from path and caches it. Subsequent calls with the same path return the cached image.
 func (m *Manager) LoadImage(path string) (*ebiten.Image, error) {
+	resolved := m.resolve(path)
 	m.mu.RLock()
-	img, ok := m.images[path]
+	img, ok := m.images[resolved]
 	m.mu.RUnlock()
 	if ok {
 		return img, nil
@@ -50,23 +71,23 @@ func (m *Manager) LoadImage(path string) (*ebiten.Image, error) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Double-check after acquiring write lock
-	if img, ok = m.images[path]; ok {
+	if img, ok = m.images[resolved]; ok {
 		return img, nil
 	}
 
-	img, _, err := ebitenutil.NewImageFromFile(path)
+	img, _, err := ebitenutil.NewImageFromFile(resolved)
 	if err != nil {
-		return nil, fmt.Errorf("load image %q: %w", path, err)
+		return nil, fmt.Errorf("load image %q: %w", resolved, err)
 	}
-	m.images[path] = img
+	m.images[resolved] = img
 	return img, nil
 }
 
 // LoadAudio loads a WAV file from path and caches its bytes. Use NewAudioPlayer to get a playable player.
 func (m *Manager) LoadAudio(path string) error {
+	resolved := m.resolve(path)
 	m.mu.RLock()
-	_, ok := m.audioBytes[path]
+	_, ok := m.audioBytes[resolved]
 	m.mu.RUnlock()
 	if ok {
 		return nil
@@ -74,15 +95,15 @@ func (m *Manager) LoadAudio(path string) error {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok = m.audioBytes[path]; ok {
+	if _, ok = m.audioBytes[resolved]; ok {
 		return nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolved)
 	if err != nil {
-		return fmt.Errorf("load audio %q: %w", path, err)
+		return fmt.Errorf("load audio %q: %w", resolved, err)
 	}
-	m.audioBytes[path] = data
+	m.audioBytes[resolved] = data
 	if m.audioCtx == nil {
 		m.audioCtx = audio.NewContext(defaultSampleRate)
 	}
@@ -92,12 +113,13 @@ func (m *Manager) LoadAudio(path string) error {
 // NewAudioPlayer returns a new audio.Player for the given path. The path must have been loaded with LoadAudio first.
 // Caller may call player.Play() and should not close the player; it is consumed when played.
 func (m *Manager) NewAudioPlayer(path string) (*audio.Player, error) {
+	resolved := m.resolve(path)
 	m.mu.RLock()
-	data, ok := m.audioBytes[path]
+	data, ok := m.audioBytes[resolved]
 	ctx := m.audioCtx
 	m.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("audio not loaded: %q (call LoadAudio first)", path)
+		return nil, fmt.Errorf("audio not loaded: %q (call LoadAudio first)", resolved)
 	}
 	if ctx == nil {
 		return nil, fmt.Errorf("audio context not initialized")
@@ -105,19 +127,20 @@ func (m *Manager) NewAudioPlayer(path string) (*audio.Player, error) {
 
 	stream, err := wav.DecodeWithSampleRate(ctx.SampleRate(), bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("decode audio %q: %w", path, err)
+		return nil, fmt.Errorf("decode audio %q: %w", resolved, err)
 	}
 	player, err := ctx.NewPlayer(stream)
 	if err != nil {
-		return nil, fmt.Errorf("new player for %q: %w", path, err)
+		return nil, fmt.Errorf("new player for %q: %w", resolved, err)
 	}
 	return player, nil
 }
 
 // LoadFont loads a TTF or OTF file from path and caches it. Use GetFace to get a font.Face at a given size.
 func (m *Manager) LoadFont(path string) error {
+	resolved := m.resolve(path)
 	m.mu.RLock()
-	_, ok := m.fonts[path]
+	_, ok := m.fonts[resolved]
 	m.mu.RUnlock()
 	if ok {
 		return nil
@@ -125,25 +148,26 @@ func (m *Manager) LoadFont(path string) error {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok = m.fonts[path]; ok {
+	if _, ok = m.fonts[resolved]; ok {
 		return nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolved)
 	if err != nil {
-		return fmt.Errorf("load font %q: %w", path, err)
+		return fmt.Errorf("load font %q: %w", resolved, err)
 	}
 	fnt, err := opentype.Parse(data)
 	if err != nil {
-		return fmt.Errorf("parse font %q: %w", path, err)
+		return fmt.Errorf("parse font %q: %w", resolved, err)
 	}
-	m.fonts[path] = fnt
+	m.fonts[resolved] = fnt
 	return nil
 }
 
 // GetFace returns a font.Face for the given path and size in points. The path must have been loaded with LoadFont first.
 func (m *Manager) GetFace(path string, size float64) (font.Face, error) {
-	key := fmt.Sprintf("%s:%g", path, size)
+	resolved := m.resolve(path)
+	key := fmt.Sprintf("%s:%g", resolved, size)
 	m.mu.RLock()
 	f, ok := m.faces[key]
 	m.mu.RUnlock()
@@ -157,13 +181,13 @@ func (m *Manager) GetFace(path string, size float64) (font.Face, error) {
 		return f, nil
 	}
 
-	fnt, ok := m.fonts[path]
+	fnt, ok := m.fonts[resolved]
 	if !ok {
-		return nil, fmt.Errorf("font not loaded: %q (call LoadFont first)", path)
+		return nil, fmt.Errorf("font not loaded: %q (call LoadFont first)", resolved)
 	}
 	face, err := opentype.NewFace(fnt, &opentype.FaceOptions{Size: size, DPI: 72})
 	if err != nil {
-		return nil, fmt.Errorf("new face for %q: %w", path, err)
+		return nil, fmt.Errorf("new face for %q: %w", resolved, err)
 	}
 	m.faces[key] = face
 	return face, nil
