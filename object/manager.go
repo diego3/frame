@@ -77,6 +77,10 @@ func (w *Manager) Draw(screen *ebiten.Image) {
 		transform := go_.Transform()
 		anim := go_.Animator()
 		if anim != nil && anim.Current != "" {
+			// Debug: log knight's anim at draw time when one-shot to see if attack/dash reach Draw
+			// if go_.Name == "knight" && (anim.Current == "attack" || anim.Current == "attack2" || anim.Current == "dash") {
+			// 	log.Printf("[Draw] knight anim.Current=%q", anim.Current)
+			// }
 			key := "spritesheet:" + anim.Current
 			if c := go_.GetComponent(key); c != nil {
 				if d, ok := c.(Drawer); ok {

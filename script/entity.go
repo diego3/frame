@@ -64,7 +64,7 @@ func SetSelf(L *lua.LState, go_ *object.GameObject) {
 		L.Push(lua.LBool(false))
 		return 1
 	}))
-	// get_intent(key) -> number or bool; keys: "move_x", "move_y", "dash", "attack", "attack2"
+	// get_intent(key) -> number; keys: "move_x", "move_y" (from IntentBuffer filled by MoveRequested)
 	t.RawSetString("get_intent", L.NewFunction(func(L *lua.LState) int {
 		key := L.CheckString(1)
 		c := go_.GetComponent("intent_buffer")
@@ -82,12 +82,6 @@ func SetSelf(L *lua.LState, go_ *object.GameObject) {
 			L.Push(lua.LNumber(ib.PendingMoveX))
 		case "move_y":
 			L.Push(lua.LNumber(ib.PendingMoveY))
-		case "dash":
-			L.Push(lua.LBool(ib.PendingDash))
-		case "attack":
-			L.Push(lua.LBool(ib.PendingAttack))
-		case "attack2":
-			L.Push(lua.LBool(ib.PendingAttack2))
 		default:
 			pushIntentZero(L, key)
 		}

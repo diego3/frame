@@ -19,7 +19,7 @@ local pending_attack = false
 local pending_attack2 = false
 
 function on_event(name, _payload)
-  if name == "DashRequested" then
+  if name == "ddsa" then
     pending_dash = true
   elseif name == "AttackRequested" then
     pending_attack = true
@@ -76,13 +76,16 @@ end
 
 local function try_dash(intents, vx, vy)
   if not intents.dash or dash_cooldown > 0 then return false end
+  
   local dx, dy = dash_impulse_vector(vx, vy)
-  if dx == 0 and dy == 0 then return false end
+  if dx == 0 and dy == 0 then 
+    return false 
+  end
+  
   self.set_velocity(dx, dy)
   dash_cooldown = DASH_COOLDOWN_SEC
   dash_active_until = DASH_DURATION_SEC
   self.play_animation("dash")
-  self.reset_animation("dash")
   return true
 end
 
@@ -91,21 +94,16 @@ local function is_one_shot_anim(name)
 end
 
 local function pick_movement_animation(intents)
-  local cur = self.current_animation()
-  if is_one_shot_anim(cur) then
-    if self.animation_finished() then
-      self.play_animation("idle")
-    end
-  elseif intents.move_x ~= 0 or intents.move_y ~= 0 then
+  if intents.move_x ~= 0 or intents.move_y ~= 0 then
     self.play_animation("run")
   else
     self.play_animation("idle")
   end
 end
 
+-- Full update: one-shot anims (attack, attack2, dash) are reset when they finish (transition to idle), not when started.
 function update(dt)
   local intents = read_intents()
-  clear_one_shot_intents()
   tick_cooldowns(dt)
 
   if intents.move_x ~= 0 or intents.move_y ~= 0 then
@@ -120,13 +118,23 @@ function update(dt)
     self.set_velocity(vx, vy)
   end
 
-  if intents.attack then
+  -- Start one-shot anims (no reset here; reset when they finish)
+  if pending_attack then
     self.play_animation("attack")
-    self.reset_animation("attack")
-  elseif intents.attack2 then
+  elseif pending_attack2 then
     self.play_animation("attack2")
-    self.reset_animation("attack2")
   end
 
-  pick_movement_animation(intents)
+  -- When current one-shot finishes: go to idle, reset that anim, clear pending intents
+  local cur = self.current_animation()
+  if is_one_shot_anim(cur) and self.animation_finished() then
+    self.play_animation("idle")
+    self.reset_animation(cur)
+    clear_one_shot_intents()
+  end
+
+  -- When not in a one-shot, pick idle/run from movement
+  if not is_one_shot_anim(self.current_animation()) then
+    pick_movement_animation(intents)
+  end
 end

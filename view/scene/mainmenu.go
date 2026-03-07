@@ -181,9 +181,6 @@ func (m *MainMenu) Update(dt float64) {
 		if _, err := m.vm.CallFunc(funcName, lua.LNumber(dt)); err != nil {
 			continue
 		}
-		if ib := go_.GetComponent("intent_buffer"); ib != nil {
-			ib.(*object.IntentBuffer).ClearOneShot()
-		}
 	}
 	if m.physicsSystem != nil {
 		m.physicsSystem.Step(dt)
