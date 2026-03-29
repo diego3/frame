@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,9 +23,12 @@ const defaultSampleRate = 44100
 
 // Manager loads and caches game assets. Safe for concurrent use.
 // Root is prepended to relative paths when set (e.g. "games/demo1").
+// When an fs.FS is set via SetFS, all reads use the embedded FS instead of the OS filesystem
+// and the root prefix is not applied (the FS root is already the game root).
 type Manager struct {
 	mu         sync.RWMutex
 	root       string
+	fsys       fs.FS
 	images     map[string]*ebiten.Image
 	audioBytes map[string][]byte
 	audioCtx   *audio.Context
@@ -33,10 +37,20 @@ type Manager struct {
 }
 
 // SetRoot sets the base path for relative asset paths. Paths passed to Load* are joined with root.
+// Has no effect when an fs.FS is set via SetFS (the FS root is already the game root).
 func (m *Manager) SetRoot(root string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.root = root
+}
+
+// SetFS configures the manager to read all assets from fsys instead of the OS filesystem.
+// When set, the root prefix is not applied; paths are used as-is relative to the FS root.
+// Use with an embed.FS for WASM builds where the OS filesystem is unavailable.
+func (m *Manager) SetFS(fsys fs.FS) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fsys = fsys
 }
 
 // NewManager returns a new resource manager.
@@ -64,6 +78,7 @@ func (m *Manager) LoadImage(path string) (*ebiten.Image, error) {
 	resolved := m.resolve(path)
 	m.mu.RLock()
 	img, ok := m.images[resolved]
+	fsys := m.fsys
 	m.mu.RUnlock()
 	if ok {
 		return img, nil
@@ -75,7 +90,17 @@ func (m *Manager) LoadImage(path string) (*ebiten.Image, error) {
 		return img, nil
 	}
 
-	img, _, err := ebitenutil.NewImageFromFile(resolved)
+	var err error
+	if fsys != nil {
+		f, openErr := fsys.Open(path)
+		if openErr != nil {
+			return nil, fmt.Errorf("load image %q: %w", path, openErr)
+		}
+		defer f.Close()
+		img, _, err = ebitenutil.NewImageFromReader(f)
+	} else {
+		img, _, err = ebitenutil.NewImageFromFile(resolved)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("load image %q: %w", resolved, err)
 	}
@@ -88,6 +113,7 @@ func (m *Manager) LoadAudio(path string) error {
 	resolved := m.resolve(path)
 	m.mu.RLock()
 	_, ok := m.audioBytes[resolved]
+	fsys := m.fsys
 	m.mu.RUnlock()
 	if ok {
 		return nil
@@ -99,7 +125,13 @@ func (m *Manager) LoadAudio(path string) error {
 		return nil
 	}
 
-	data, err := os.ReadFile(resolved)
+	var data []byte
+	var err error
+	if fsys != nil {
+		data, err = fs.ReadFile(fsys, path)
+	} else {
+		data, err = os.ReadFile(resolved)
+	}
 	if err != nil {
 		return fmt.Errorf("load audio %q: %w", resolved, err)
 	}
@@ -141,6 +173,7 @@ func (m *Manager) LoadFont(path string) error {
 	resolved := m.resolve(path)
 	m.mu.RLock()
 	_, ok := m.fonts[resolved]
+	fsys := m.fsys
 	m.mu.RUnlock()
 	if ok {
 		return nil
@@ -152,7 +185,13 @@ func (m *Manager) LoadFont(path string) error {
 		return nil
 	}
 
-	data, err := os.ReadFile(resolved)
+	var data []byte
+	var err error
+	if fsys != nil {
+		data, err = fs.ReadFile(fsys, path)
+	} else {
+		data, err = os.ReadFile(resolved)
+	}
 	if err != nil {
 		return fmt.Errorf("load font %q: %w", resolved, err)
 	}
