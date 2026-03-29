@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/image/font"
 
 	"goengine/application/config"
@@ -29,12 +28,12 @@ type MainMenuState struct {
 }
 
 // MainMenu is the initial scene (title + click me button + data-driven GameObject world).
-// Logic (Update) runs script components (shared VM per scene), then physics, then world update.
+// Logic (Update) runs script components (shared engine per scene), then physics, then world update.
 type MainMenu struct {
 	titleImg         *ebiten.Image
 	uiFace           font.Face
 	world            *object.Manager
-	vm               *script.VM
+	engine           script.Engine
 	loadedScripts    map[string]bool // path -> true once loaded
 	gameRoot         string          // base path for script loading on OS filesystem (e.g. "games/demo1")
 	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
@@ -50,6 +49,7 @@ func NewMainMenu() *MainMenu {
 // Setup loads assets and builds the UI. Implements ports.Scene.
 // If config has scene_path set, the world is built from that YAML; otherwise an empty world is used.
 // bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
+// The script engine backend (Lua or Python) is selected from cfg.ScriptEngine.
 func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root ports.UIRoot, bus *event.Bus) error {
 	event.Subscribe(bus, func(ev event.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
@@ -65,8 +65,8 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		}
 	})
 	event.Subscribe(bus, func(ev event.ScriptEmitted) {
-		if m.vm != nil && m.vm.L != nil {
-			_ = script.CallOnEvent(m.vm.L, ev.Name, ev.Payload)
+		if m.engine != nil {
+			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
 		}
 	})
 
@@ -75,8 +75,11 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	if setter, ok := loader.(interface{ SetRoot(string) }); ok {
 		setter.SetRoot(cfg.GameRoot)
 	}
-	m.vm = script.NewVM()
+
+	// Create the script engine for this scene (Lua or Python based on config).
+	m.engine = script.NewEngine(cfg.ScriptEngine)
 	m.loadedScripts = make(map[string]bool)
+
 	playSound := func(path string) {
 		_ = loader.LoadAudio(path)
 		if p, err := loader.NewAudioPlayer(path); err == nil {
@@ -88,7 +91,7 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	emit := func(name string, payload map[string]interface{}) {
 		bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
 	}
-	m.vm.RegisterEngine("engine", script.EngineFuncs(playSound, switchScene, quit, emit))
+	m.engine.RegisterEngineAPI(playSound, switchScene, quit, emit)
 
 	a := &cfg.Assets
 	if err := loader.LoadFont(a.FontPath); err != nil {
@@ -152,13 +155,12 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	return nil
 }
 
-// Update implements ports.Scene. Runs script components (shared VM), then physics step, sync, world update.
+// Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
 func (m *MainMenu) Update(dt float64) {
-	if m.world == nil || m.vm == nil {
+	if m.world == nil || m.engine == nil {
 		return
 	}
-	// Run script updates for every GameObject with a script component
-	// FIXME: can be refactored, only scripting stuffs in the middle of the update method
+	// Run script updates for every GameObject with a script component.
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active {
 			continue
@@ -171,6 +173,10 @@ func (m *MainMenu) Update(dt float64) {
 		if !ok || s.Path == "" {
 			continue
 		}
+		scriptPath := s.Path
+		if m.gameRoot != "" {
+			scriptPath = filepath.Join(m.gameRoot, scriptPath)
+		}
 		if !m.loadedScripts[s.Path] {
 			var loadErr error
 			if m.fsys != nil {
@@ -178,13 +184,9 @@ func (m *MainMenu) Update(dt float64) {
 				if readErr != nil {
 					continue
 				}
-				loadErr = m.vm.DoString(string(src))
+				loadErr = m.engine.DoString(scriptPath, string(src))
 			} else {
-				scriptPath := s.Path
-				if m.gameRoot != "" {
-					scriptPath = filepath.Join(m.gameRoot, scriptPath)
-				}
-				loadErr = m.vm.DoFile(scriptPath)
+				loadErr = m.engine.DoFile(scriptPath)
 			}
 			if loadErr != nil {
 				continue
@@ -195,8 +197,7 @@ func (m *MainMenu) Update(dt float64) {
 		if funcName == "" {
 			funcName = "update"
 		}
-		script.SetSelf(m.vm.L, go_)
-		if _, err := m.vm.CallFunc(funcName, lua.LNumber(dt)); err != nil {
+		if err := m.engine.CallScriptUpdate(scriptPath, funcName, go_, dt); err != nil {
 			continue
 		}
 	}

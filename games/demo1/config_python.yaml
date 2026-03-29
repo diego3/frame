@@ -1,0 +1,44 @@
+# GoEngine config — Python scripting demo.
+# Identical to config.yaml but uses the Python script engine and Python scene.
+# Run with: go run . games/demo1/config_python.yaml
+
+window:
+  width: 800
+  height: 600
+  title: "GoEngine (Python scripts)"
+  resizable: true
+  fullscreen: false
+
+layout:
+  width: 800
+  height: 600
+
+assets:
+  font_path: "assets/ShadeBlue-2OozX.ttf"
+  font_size: 24
+  click_sound: "assets/840321__robo9418__wooden-short-click.wav"
+  scene_path: "scenes/main_menu_python.yaml"
+
+physics:
+  gravity_x: 0
+  gravity_y: 800
+  pixel_scale: 64
+
+input:
+  debug_overlay: F3
+  move_left: A
+  move_right: D
+  move_up: W
+  move_down: S
+  dash: [ShiftLeft, ShiftRight]
+  attack: J
+  attack2: K
+
+# Script events: input action -> ScriptEmitted name delivered to on_event(name, payload)
+script_events:
+  dash: "DashRequested"
+  attack: "AttackRequested"
+  attack2: "Attack2Requested"
+
+# Select the scripting backend. "python" uses gpython (pure-Go Python 3.4).
+script_engine: "python"
