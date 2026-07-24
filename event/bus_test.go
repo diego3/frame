@@ -178,4 +178,3 @@ func TestBus_ConcurrentEmitAndSubscribe(t *testing.T) {
 	expected := int64(goroutines * emitsPerGoroutine)
 	assert.Equal(t, expected, count)
 }
-
