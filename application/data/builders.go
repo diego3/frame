@@ -22,7 +22,7 @@ func init() {
 	RegisterComponentBuilder("intent_buffer", buildIntentBuffer)
 }
 
-func buildTransform(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildTransform(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	x, _ := floatParam(params, "x")
 	y, _ := floatParam(params, "y")
 	angle, _ := floatParam(params, "angle")
@@ -40,7 +40,7 @@ func buildTransform(params map[string]interface{}, _ ports.AssetLoader) (object.
 	}, nil
 }
 
-func buildSprite(params map[string]interface{}, loader ports.AssetLoader) (object.Component, error) {
+func buildSprite(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error) {
 	path, err := stringParam(params, "image")
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func buildSprite(params map[string]interface{}, loader ports.AssetLoader) (objec
 	return &object.Sprite{Image: img, Layer: layer}, nil
 }
 
-func buildSpritesheet(params map[string]interface{}, loader ports.AssetLoader) (object.Component, error) {
+func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error) {
 	name, _ := stringParam(params, "name")
 	path, err := stringParam(params, "image")
 	if err != nil {
@@ -101,12 +101,12 @@ func buildSpritesheet(params map[string]interface{}, loader ports.AssetLoader) (
 	}, nil
 }
 
-func buildAnimator(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildAnimator(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	current, _ := stringParam(params, "current")
 	return &object.Animator{Current: current}, nil
 }
 
-func buildBlock(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildBlock(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	width, _ := floatParam(params, "width")
 	height, _ := floatParam(params, "height")
 	if width <= 0 {
@@ -138,7 +138,7 @@ func buildBlock(params map[string]interface{}, _ ports.AssetLoader) (object.Comp
 	return blk, nil
 }
 
-func buildBall(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildBall(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	radius, _ := floatParam(params, "radius")
 	if radius <= 0 {
 		radius = 24
@@ -166,7 +166,7 @@ func buildBall(params map[string]interface{}, _ ports.AssetLoader) (object.Compo
 	return ball, nil
 }
 
-func buildPhysicsBody(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildPhysicsBody(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	bodyType := physics.BodyStatic
 	if s, _ := stringParam(params, "body_type"); s != "" {
 		switch strings.ToLower(s) {
@@ -213,7 +213,7 @@ func buildPhysicsBody(params map[string]interface{}, _ ports.AssetLoader) (objec
 	}, nil
 }
 
-func buildScript(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildScript(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	path, err := stringParam(params, "path")
 	if err != nil || path == "" {
 		return nil, fmt.Errorf("script: path required")
@@ -228,6 +228,6 @@ func buildScript(params map[string]interface{}, _ ports.AssetLoader) (object.Com
 	}, nil
 }
 
-func buildIntentBuffer(_ map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildIntentBuffer(_ map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	return &object.IntentBuffer{}, nil
 }

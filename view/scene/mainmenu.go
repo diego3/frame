@@ -4,7 +4,6 @@ import (
 	"image/color"
 	"path/filepath"
 
-	"goengine/application/config"
 	"goengine/application/data"
 	"goengine/event"
 	"goengine/events"
@@ -49,8 +48,10 @@ func NewMainMenu() *MainMenu {
 
 // Setup loads assets and builds the UI. Implements ports.Scene.
 // If config has scene_path set, the world is built from that YAML; otherwise an empty world is used.
-// bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
-func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root ports.UIRoot, bus *event.Bus) error {
+// ctx.Bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
+func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
+	cfg, loader, root, bus := ctx.Config, ctx.Loader, ctx.UI, ctx.Bus
+
 	event.Subscribe(bus, func(ev events.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
 	})
@@ -104,7 +105,7 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 
 	clickSound := a.ClickSound
 	// TODO ui screen will be mounted from file as well
-	root.AddButton(&ui.Button{
+	root.AddElement(&ui.Button{
 		X: 100, Y: 80, Width: 120, Height: 40,
 		Label: "Click me",
 		OnClick: func() {
