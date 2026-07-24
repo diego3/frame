@@ -1,11 +1,12 @@
-//go:build !js
+//go:build js && wasm
 
 package main
 
 import (
 	"errors"
 	"log"
-	"os"
+
+	demo1 "goengine/games/demo1"
 
 	"goengine/application/config"
 	"goengine/application/engine"
@@ -13,7 +14,7 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("games/demo1/config.yaml")
+	cfg, err := config.LoadFromFS(demo1.FS, "config.yaml")
 	if err != nil {
 		log.Fatal("config: ", err)
 	}
@@ -23,7 +24,7 @@ func main() {
 
 	if err := e.Run(); err != nil {
 		if errors.Is(err, game.ErrShutdownRequested) {
-			os.Exit(0)
+			return
 		}
 		log.Fatal(err)
 	}

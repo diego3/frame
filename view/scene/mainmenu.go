@@ -2,7 +2,12 @@ package scene
 
 import (
 	"image/color"
+	"io/fs"
 	"path/filepath"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	lua "github.com/yuin/gopher-lua"
+	"golang.org/x/image/font"
 
 	"goengine/application/config"
 	"goengine/application/data"
@@ -14,11 +19,6 @@ import (
 	"goengine/resource"
 	"goengine/script"
 	"goengine/view/ui"
-
-	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
-
-	lua "github.com/yuin/gopher-lua"
 )
 
 // MainMenuState holds only simulation data for the main menu. Logic updates it in Update(dt) from intent events;
@@ -35,8 +35,9 @@ type MainMenu struct {
 	uiFace           font.Face
 	world            *object.Manager
 	vm               *script.VM
-	loadedScripts    map[string]bool // path -> true once DoFile'd
-	gameRoot         string          // base path for script DoFile (e.g. "games/demo1")
+	loadedScripts    map[string]bool // path -> true once loaded
+	gameRoot         string          // base path for script loading on OS filesystem (e.g. "games/demo1")
+	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
 	physicsSystem    *PhysicsSystem
 	debugDrawPhysics bool
 }
@@ -70,6 +71,7 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 	})
 
 	m.gameRoot = cfg.GameRoot
+	m.fsys = cfg.FS
 	if setter, ok := loader.(interface{ SetRoot(string) }); ok {
 		setter.SetRoot(cfg.GameRoot)
 	}
@@ -115,11 +117,17 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 
 	// Data-driven world: load scene from YAML if path set (path relative to game root)
 	if a.ScenePath != "" {
-		scenePath := a.ScenePath
-		if m.gameRoot != "" {
-			scenePath = filepath.Join(m.gameRoot, scenePath)
+		var def *data.SceneDef
+		var err error
+		if m.fsys != nil {
+			def, err = data.LoadSceneFS(m.fsys, a.ScenePath)
+		} else {
+			scenePath := a.ScenePath
+			if m.gameRoot != "" {
+				scenePath = filepath.Join(m.gameRoot, scenePath)
+			}
+			def, err = data.LoadScene(scenePath)
 		}
-		def, err := data.LoadScene(scenePath)
 		if err != nil {
 			return err
 		}
@@ -164,11 +172,21 @@ func (m *MainMenu) Update(dt float64) {
 			continue
 		}
 		if !m.loadedScripts[s.Path] {
-			scriptPath := s.Path
-			if m.gameRoot != "" {
-				scriptPath = filepath.Join(m.gameRoot, scriptPath)
+			var loadErr error
+			if m.fsys != nil {
+				src, readErr := fs.ReadFile(m.fsys, s.Path)
+				if readErr != nil {
+					continue
+				}
+				loadErr = m.vm.DoString(string(src))
+			} else {
+				scriptPath := s.Path
+				if m.gameRoot != "" {
+					scriptPath = filepath.Join(m.gameRoot, scriptPath)
+				}
+				loadErr = m.vm.DoFile(scriptPath)
 			}
-			if err := m.vm.DoFile(scriptPath); err != nil {
+			if loadErr != nil {
 				continue
 			}
 			m.loadedScripts[s.Path] = true

@@ -1,10 +1,6 @@
 package engine
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"goengine/application/config"
 	"goengine/application/game"
 	"goengine/event"
@@ -25,7 +21,11 @@ type Engine struct {
 // New builds the dependency graph and returns an Engine. cfg must not be nil.
 func New(cfg *config.Config) *Engine {
 	bus := event.NewBus()
-	var loader ports.AssetLoader = resource.NewManager()
+	mgr := resource.NewManager()
+	if cfg.FS != nil {
+		mgr.SetFS(cfg.FS)
+	}
+	var loader ports.AssetLoader = mgr
 	u := ui.NewContainer()
 	sm := scene.NewManager()
 	// FIXME: this is a problem, add a new scene here is not ideal, it should be data driven
@@ -42,7 +42,7 @@ func (e *Engine) Shutdown() {
 }
 
 // Run initializes the game, applies window settings, and runs the ebiten loop.
-// On SIGINT (Ctrl+C) or SIGTERM, the game loop exits cleanly and Run returns game.ErrShutdownRequested.
+// On SIGINT (Ctrl+C) or SIGTERM (non-WASM), the game loop exits cleanly and Run returns game.ErrShutdownRequested.
 // The caller should defer e.Shutdown() before Run so cleanup runs on any exit path.
 func (e *Engine) Run() error {
 	if err := e.game.Init(); err != nil {
@@ -51,13 +51,7 @@ func (e *Engine) Run() error {
 
 	shutdownCh := make(chan struct{})
 	e.game.SetShutdownChannel(shutdownCh)
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-		signal.Stop(sigCh)
-		close(shutdownCh)
-	}()
+	watchSignals(shutdownCh)
 
 	w := e.cfg.Window
 	ebiten.SetWindowSize(w.Width, w.Height)

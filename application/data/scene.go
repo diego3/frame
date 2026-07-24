@@ -2,11 +2,13 @@ package data
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 
-	"goengine/ports"
-	"goengine/object"
 	"gopkg.in/yaml.v3"
+
+	"goengine/object"
+	"goengine/ports"
 )
 
 // SceneDef is the data-driven definition of a scene (list of game objects).
@@ -31,9 +33,22 @@ func RegisterComponentBuilder(typeName string, fn ComponentBuilder) {
 	builders[typeName] = fn
 }
 
-// LoadScene loads a scene definition from a YAML file.
+// LoadScene loads a scene definition from a YAML file on the OS filesystem.
 func LoadScene(path string) (*SceneDef, error) {
 	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("load scene %q: %w", path, err)
+	}
+	var def SceneDef
+	if err := yaml.Unmarshal(data, &def); err != nil {
+		return nil, fmt.Errorf("parse scene %q: %w", path, err)
+	}
+	return &def, nil
+}
+
+// LoadSceneFS loads a scene definition from fsys at path. Use for embedded assets (e.g. WASM builds).
+func LoadSceneFS(fsys fs.FS, path string) (*SceneDef, error) {
+	data, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, fmt.Errorf("load scene %q: %w", path, err)
 	}
