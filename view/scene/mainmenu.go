@@ -7,6 +7,7 @@ import (
 	"goengine/application/config"
 	"goengine/application/data"
 	"goengine/event"
+	"goengine/events"
 	"goengine/object"
 	"goengine/physics"
 	"goengine/physics/box2d"
@@ -50,10 +51,10 @@ func NewMainMenu() *MainMenu {
 // If config has scene_path set, the world is built from that YAML; otherwise an empty world is used.
 // bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
 func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root ports.UIRoot, bus *event.Bus) error {
-	event.Subscribe(bus, func(ev event.DebugOverlayToggled) {
+	event.Subscribe(bus, func(ev events.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
 	})
-	event.Subscribe(bus, func(ev event.MoveRequested) {
+	event.Subscribe(bus, func(ev events.MoveRequested) {
 		if m.world != nil {
 			if k := m.world.Find("knight"); k != nil {
 				if c := k.GetComponent("intent_buffer"); c != nil {
@@ -63,7 +64,7 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 			}
 		}
 	})
-	event.Subscribe(bus, func(ev event.ScriptEmitted) {
+	event.Subscribe(bus, func(ev events.ScriptEmitted) {
 		if m.vm != nil && m.vm.L != nil {
 			_ = script.CallOnEvent(m.vm.L, ev.Name, ev.Payload)
 		}
@@ -81,10 +82,10 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 			p.Play()
 		}
 	}
-	switchScene := func(sceneID string) { bus.Emit(event.SceneChangeRequested{SceneID: sceneID}) }
-	quit := func() { bus.Emit(event.QuitRequested{}) }
+	switchScene := func(sceneID string) { bus.Emit(events.SceneChangeRequested{SceneID: sceneID}) }
+	quit := func() { bus.Emit(events.QuitRequested{}) }
 	emit := func(name string, payload map[string]interface{}) {
-		bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
+		bus.Emit(events.ScriptEmitted{Name: name, Payload: payload})
 	}
 	m.vm.RegisterEngine("engine", script.EngineFuncs(playSound, switchScene, quit, emit))
 
@@ -149,8 +150,17 @@ func (m *MainMenu) Update(dt float64) {
 	if m.world == nil || m.vm == nil {
 		return
 	}
-	// Run script updates for every GameObject with a script component
-	// FIXME: can be refactored, only scripting stuffs in the middle of the update method
+	m.updateScripts(dt)
+	if m.physicsSystem != nil {
+		m.physicsSystem.Step(dt)
+		m.physicsSystem.SyncToWorld(m.world)
+	}
+	m.world.Update(dt)
+}
+
+// updateScripts runs the shared Lua VM's update(dt) (or Script.UpdateFuncName) for every active
+// GameObject with a script component, loading each script file on first use.
+func (m *MainMenu) updateScripts(dt float64) {
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active {
 			continue
@@ -182,11 +192,6 @@ func (m *MainMenu) Update(dt float64) {
 			continue
 		}
 	}
-	if m.physicsSystem != nil {
-		m.physicsSystem.Step(dt)
-		m.physicsSystem.SyncToWorld(m.world)
-	}
-	m.world.Update(dt)
 }
 
 // Draw renders the scene from current state and view assets. Implements ports.Scene.

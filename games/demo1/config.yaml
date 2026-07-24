@@ -43,3 +43,9 @@ script_events:
   dash: "DashRequested"
   attack: "AttackRequested"
   attack2: "Attack2Requested"
+
+# Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
+# Omit both to fall back to the engine default (a single "main_menu" scene).
+scenes:
+  main_menu: main_menu
+initial_scene: main_menu

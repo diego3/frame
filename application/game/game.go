@@ -6,6 +6,7 @@ import (
 
 	"goengine/application/config"
 	"goengine/event"
+	"goengine/events"
 	"goengine/ports"
 	"goengine/script"
 	"goengine/view/input"
@@ -62,13 +63,13 @@ func New(cfg *config.Config, loader ports.AssetLoader, ui ports.UIRoot, manager 
 		inputAdapter:   input.NewAdapter(mgr, event.NewIntentBus(bus), scriptEvents),
 		quitCh:         make(chan struct{}),
 	}
-	event.Subscribe(bus, func(ev event.SceneChangeRequested) {
+	event.Subscribe(bus, func(ev events.SceneChangeRequested) {
 		if err := g.manager.SwitchTo(ev.SceneID, g.cfg, g.loader, g.ui, g.bus); err != nil {
 			return
 		}
-		event.Emit(g.bus, event.SceneChanged{SceneID: ev.SceneID})
+		event.Emit(g.bus, events.SceneChanged{SceneID: ev.SceneID})
 	})
-	event.Subscribe(bus, func(ev event.QuitRequested) {
+	event.Subscribe(bus, func(ev events.QuitRequested) {
 		g.quitOnce.Do(func() { close(g.quitCh) })
 	})
 	return g
@@ -105,17 +106,17 @@ func (g *Game) playSound(path string) {
 
 // switchScene emits SceneChangeRequested so the application switches scene. Used by Lua engine.switch_scene(id).
 func (g *Game) switchScene(sceneID string) {
-	g.bus.Emit(event.SceneChangeRequested{SceneID: sceneID})
+	g.bus.Emit(events.SceneChangeRequested{SceneID: sceneID})
 }
 
 // quit emits QuitRequested so the application exits. Used by Lua engine.quit().
 func (g *Game) quit() {
-	g.bus.Emit(event.QuitRequested{})
+	g.bus.Emit(events.QuitRequested{})
 }
 
 // emitScript emits ScriptEmitted so scripts can fire custom events via engine.emit(name, payload).
 func (g *Game) emitScript(name string, payload map[string]interface{}) {
-	g.bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
+	g.bus.Emit(events.ScriptEmitted{Name: name, Payload: payload})
 }
 
 // Shutdown runs when the game exits. Releases loaded resources and closes the script VM.

@@ -69,3 +69,15 @@ func (g *GameObject) PhysicsBody() *PhysicsBody {
 	}
 	return nil
 }
+
+// AnimatedComponent returns the single component selected by the Animator, when one is present with a
+// non-empty Current (e.g. the "spritesheet:run" component while Current is "run"). ok is false when there
+// is no Animator constraint, meaning callers should consider all components instead of just one.
+// Centralizing this here keeps Animator's "only one active animation" rule out of Manager.Update/Draw.
+func (g *GameObject) AnimatedComponent() (c Component, ok bool) {
+	anim := g.Animator()
+	if anim == nil || anim.Current == "" {
+		return nil, false
+	}
+	return g.components["spritesheet:"+anim.Current], true
+}
