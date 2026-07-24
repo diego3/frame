@@ -47,7 +47,8 @@ func (m *Manager) SwitchTo(id string, cfg *config.Config, loader ports.AssetLoad
 	if err != nil {
 		return fmt.Errorf("scene: create %q: %w", id, err)
 	}
-	if err := sc.Setup(cfg, loader, ui, bus); err != nil {
+	ctx := &ports.SceneContext{Config: cfg, Loader: loader, UI: ui, Bus: bus}
+	if err := sc.Setup(ctx); err != nil {
 		return fmt.Errorf("scene: setup %q: %w", id, err)
 	}
 	m.mu.Lock()

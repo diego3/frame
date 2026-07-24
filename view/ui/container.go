@@ -9,7 +9,7 @@ import (
 // Container holds UI elements (e.g. buttons) and handles input and drawing.
 // It converts cursor to logical coordinates and tracks input internally.
 type Container struct {
-	Buttons  []*Button
+	Elements []Element
 	cursorX  int
 	cursorY  int
 }
@@ -17,13 +17,19 @@ type Container struct {
 // NewContainer returns a new empty container.
 func NewContainer() *Container {
 	return &Container{
-		Buttons: nil,
+		Elements: nil,
 	}
 }
 
-// AddButton adds a button to the container.
+// AddElement adds a UI element to the container. Implements ports.UIRoot.
+func (c *Container) AddElement(e Element) {
+	c.Elements = append(c.Elements, e)
+}
+
+// AddButton is a convenience wrapper for adding a *Button. Kept here (not on ports.UIRoot) so the
+// port stays element-agnostic; callers holding a *Container directly can still use it.
 func (c *Container) AddButton(b *Button) {
-	c.Buttons = append(c.Buttons, b)
+	c.AddElement(b)
 }
 
 // Update processes input. Call from game Update with layout dimensions (logical size).
@@ -36,20 +42,17 @@ func (c *Container) Update(layoutWidth, layoutHeight int) {
 		c.cursorY = cy * layoutHeight / wh
 	}
 	leftJustPressed := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
-	for _, b := range c.Buttons {
-		if b.OnClick == nil {
-			continue
-		}
-		if b.Contains(c.cursorX, c.cursorY) && leftJustPressed {
-			b.OnClick()
+	for _, e := range c.Elements {
+		if e.Contains(c.cursorX, c.cursorY) && leftJustPressed {
+			e.HandleClick()
 		}
 	}
 }
 
-// Draw renders all buttons using the cursor state from the last Update.
+// Draw renders all elements using the cursor state from the last Update.
 func (c *Container) Draw(screen *ebiten.Image, face font.Face) {
-	for _, b := range c.Buttons {
-		hovered := b.Contains(c.cursorX, c.cursorY)
-		b.DrawWithState(screen, face, hovered)
+	for _, e := range c.Elements {
+		hovered := e.Contains(c.cursorX, c.cursorY)
+		e.Draw(screen, face, hovered)
 	}
 }
