@@ -1,6 +1,7 @@
-package event
-
-// TODO, this events shoud be moved to its own package
+// Package events defines the game/application event types carried on the event.Bus.
+// event stays a generic, domain-agnostic pub/sub package (Bus, Subscribe, Emit); the concrete
+// event payloads that scenes, input, and game logic exchange live here instead.
+package events
 
 // SceneChangeRequested is emitted when a scene or UI requests a switch to another scene.
 // Subscribers (e.g. application) perform the actual switch.
@@ -65,7 +66,7 @@ type ComponentRemoved struct {
 }
 
 // ScriptEmitted is a generic event fired by scripts via engine.emit(name, payload).
-// Subscribers can listen for event.ScriptEmitted and filter by Name, or subscribe to specific names.
+// Subscribers can listen for events.ScriptEmitted and filter by Name, or subscribe to specific names.
 // Payload is a flat or nested map of string keys to values (string, number, bool, or map[string]interface{}).
 type ScriptEmitted struct {
 	Name    string

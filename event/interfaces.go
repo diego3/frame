@@ -1,5 +1,7 @@
 package event
 
+import "goengine/events"
+
 // Emitter is the narrow interface for emitting events. Layers can depend on Emitter instead of *Bus.
 // *Bus implements Emitter.
 type Emitter interface {
@@ -32,8 +34,8 @@ func (i *IntentBus) Emit(ev interface{}) {
 		return
 	}
 	switch ev.(type) {
-	case SceneChangeRequested, QuitRequested, DebugOverlayToggled,
-		MoveRequested, ScriptEmitted:
+	case events.SceneChangeRequested, events.QuitRequested, events.DebugOverlayToggled,
+		events.MoveRequested, events.ScriptEmitted:
 		i.bus.Emit(ev)
 	}
 }
@@ -52,8 +54,8 @@ func (s *StateBus) Emit(ev interface{}) {
 		return
 	}
 	switch ev.(type) {
-	case SceneChanged, GameObjectCreated, GameObjectDestroyed,
-		GameObjectActivated, GameObjectDeactivated, ComponentAdded, ComponentRemoved:
+	case events.SceneChanged, events.GameObjectCreated, events.GameObjectDestroyed,
+		events.GameObjectActivated, events.GameObjectDeactivated, events.ComponentAdded, events.ComponentRemoved:
 		s.bus.Emit(ev)
 	}
 }

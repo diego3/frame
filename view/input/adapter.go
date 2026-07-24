@@ -2,12 +2,13 @@ package input
 
 import (
 	"goengine/event"
+	"goengine/events"
 )
 
 // Adapter reads keys from a Manager and emits intent events to an IntentEmitter.
 // Call Poll each frame before game logic Update so Logic reacts to intents instead of raw input.
 // ScriptEvents maps input action names to script event names; when an action is just pressed,
-// adapter emits event.ScriptEmitted{Name: eventName}. If nil, no script events are emitted.
+// adapter emits events.ScriptEmitted{Name: eventName}. If nil, no script events are emitted.
 type Adapter struct {
 	mgr          *Manager
 	emit         event.IntentEmitter
@@ -27,7 +28,7 @@ func NewAdapter(mgr *Manager, emit event.IntentEmitter, scriptEvents map[string]
 func (a *Adapter) Poll() {
 	// Global / app-level intents
 	if a.mgr.ActionJustPressed("debug_overlay") {
-		a.emit.Emit(event.DebugOverlayToggled{})
+		a.emit.Emit(events.DebugOverlayToggled{})
 	}
 
 	// Movement: emit each frame with current direction (Logic subscribes and applies)
@@ -44,7 +45,7 @@ func (a *Adapter) Poll() {
 	if a.mgr.ActionPressed("move_down") {
 		dirY = 1
 	}
-	a.emit.Emit(event.MoveRequested{DirX: dirX, DirY: dirY})
+	a.emit.Emit(events.MoveRequested{DirX: dirX, DirY: dirY})
 
 	// Data-driven: emit ScriptEmitted for each configured action -> event name
 	for action, eventName := range a.scriptEvents {
@@ -52,7 +53,7 @@ func (a *Adapter) Poll() {
 			continue
 		}
 		if a.mgr.ActionJustPressed(action) {
-			a.emit.Emit(event.ScriptEmitted{Name: eventName, Payload: nil})
+			a.emit.Emit(events.ScriptEmitted{Name: eventName, Payload: nil})
 		}
 	}
 }
