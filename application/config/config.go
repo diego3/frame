@@ -20,6 +20,7 @@ type Config struct {
 	Physics      Physics           `yaml:"physics"`
 	Input        map[string]any    `yaml:"input"`         // optional: action name -> key name(s), e.g. "dash": "ShiftLeft" or "move_left": ["A", "Left"]
 	ScriptEvents map[string]string `yaml:"script_events"` // optional: input action -> script event name, e.g. "dash": "DashRequested"
+	ScriptEngine string            `yaml:"script_engine"` // scripting backend: "lua" (default) or "python"
 }
 
 // Physics holds parameters for the physics simulation (e.g. Box2D).

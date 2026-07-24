@@ -1,0 +1,119 @@
+# Data-driven scene using Python scripts.
+# Identical to main_menu.yaml but references .py script files instead of .lua files.
+# Use with config_python.yaml (which sets script_engine: python).
+
+objects:
+  - name: gamelogic
+    components:
+      - type: script
+        path: "scripts/knight_gamelogic.py"
+  - name: ball
+    components:
+      - type: transform
+        x: 300
+        y: 0
+      - type: ball
+        radius: 12
+      - type: physics_body
+        body_type: dynamic
+        shape: circle
+        radius: 12
+        restitution: 0.8
+        friction: 0.2
+  - name: ground
+    components:
+      - type: transform
+        x: 0
+        y: 320
+      - type: block
+        width: 800
+        height: 80
+        color_r: 80
+        color_g: 70
+        color_b: 60
+      - type: physics_body
+        body_type: static
+  - name: block_left
+    components:
+      - type: transform
+        x: 50
+        y: 240
+      - type: block
+        width: 60
+        height: 80
+      - type: physics_body
+        body_type: static
+  - name: block_right
+    components:
+      - type: transform
+        x: 350
+        y: 260
+      - type: block
+        width: 80
+        height: 60
+        color_r: 90
+        color_g: 90
+        color_b: 110
+      - type: physics_body
+        body_type: static
+  - name: knight
+    components:
+      - type: transform
+        x: 100
+        y: 200
+      - type: intent_buffer
+      - type: script
+        path: "scripts/knight_controller.py"
+        update_func: "update"
+      - type: physics_body
+        body_type: kinematic
+        width: 50
+        height: 80
+        offset_x: 35
+        offset_y: 10
+        mass: 10
+      - type: spritesheet
+        name: idle
+        image: "assets/FreeKnight_v1/Colour2/Outline/120x80_PNGSheets/_Idle.png"
+        frame_width: 120
+        frame_height: 80
+        cols: 10
+        rows: 1
+        fps: 8
+      - type: spritesheet
+        name: run
+        image: "assets/FreeKnight_v1/Colour2/Outline/120x80_PNGSheets/_Run.png"
+        frame_width: 120
+        frame_height: 80
+        cols: 10
+        rows: 1
+        fps: 10
+      - type: spritesheet
+        name: attack
+        image: "assets/FreeKnight_v1/Colour2/Outline/120x80_PNGSheets/_Attack.png"
+        frame_width: 120
+        frame_height: 80
+        cols: 4
+        rows: 1
+        fps: 12
+        loop: false
+      - type: spritesheet
+        name: attack2
+        image: "assets/FreeKnight_v1/Colour2/Outline/120x80_PNGSheets/_Attack2.png"
+        frame_width: 120
+        frame_height: 80
+        cols: 4
+        rows: 1
+        fps: 12
+        loop: false
+      - type: spritesheet
+        name: dash
+        image: "assets/FreeKnight_v1/Colour2/Outline/120x80_PNGSheets/_Dash.png"
+        frame_width: 120
+        frame_height: 80
+        cols: 0
+        rows: 1
+        fps: 12
+        loop: false
+      - type: animator
+        current: idle

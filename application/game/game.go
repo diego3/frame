@@ -20,7 +20,8 @@ var ErrShutdownRequested = errors.New("shutdown requested")
 // Game holds the game state and implements ebiten.Game. It orchestrates config, loader, UI, and scene manager.
 // Scene change and quit are driven by events; Game subscribes to SceneChangeRequested and QuitRequested.
 // Input is translated to intents by input.Adapter before scene Update.
-// Script VM (Lua 5.1) is available via ScriptVM(); engine.play_sound, engine.switch_scene, engine.quit are registered.
+// A script engine (Lua or Python, selected via config) is available via ScriptEngine();
+// engine.play_sound, engine.switch_scene, engine.quit, and engine.emit are registered.
 type Game struct {
 	cfg            *config.Config
 	loader         ports.AssetLoader
@@ -29,7 +30,7 @@ type Game struct {
 	initialSceneID string
 	bus            *event.Bus
 	inputAdapter   *input.Adapter
-	scriptVM       *script.VM
+	scriptEngine   script.Engine
 	shutdownCh     <-chan struct{}
 	quitCh         chan struct{}
 	quitOnce       sync.Once
@@ -80,15 +81,16 @@ func (g *Game) SetShutdownChannel(ch <-chan struct{}) {
 	g.shutdownCh = ch
 }
 
-// Init runs once before the game loop. Loads the initial scene via the manager and initializes the script VM.
+// Init runs once before the game loop. Loads the initial scene via the manager and initializes the script engine.
+// The backend (Lua or Python) is determined by cfg.ScriptEngine.
 func (g *Game) Init() error {
-	g.scriptVM = script.NewVM()
-	g.scriptVM.RegisterEngine("engine", script.EngineFuncs(
+	g.scriptEngine = script.NewEngine(g.cfg.ScriptEngine)
+	g.scriptEngine.RegisterEngineAPI(
 		g.playSound,
 		g.switchScene,
 		g.quit,
 		g.emitScript,
-	))
+	)
 	if err := g.manager.SwitchTo(g.initialSceneID, g.cfg, g.loader, g.ui, g.bus); err != nil {
 		return err
 	}
@@ -118,11 +120,11 @@ func (g *Game) emitScript(name string, payload map[string]interface{}) {
 	g.bus.Emit(event.ScriptEmitted{Name: name, Payload: payload})
 }
 
-// Shutdown runs when the game exits. Releases loaded resources and closes the script VM.
+// Shutdown runs when the game exits. Releases loaded resources and closes the script engine.
 func (g *Game) Shutdown() {
-	if g.scriptVM != nil {
-		g.scriptVM.Close()
-		g.scriptVM = nil
+	if g.scriptEngine != nil {
+		g.scriptEngine.Close()
+		g.scriptEngine = nil
 	}
 	g.loader.Clear()
 }
@@ -167,9 +169,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	return g.cfg.Layout.Width, g.cfg.Layout.Height
 }
 
-// ScriptVM returns the Lua VM for running scripts. Scripts can call engine.play_sound(path),
-// engine.switch_scene(scene_id), and engine.quit(). Use DoFile or DoString to run scripts.
+// ScriptEngine returns the active script engine (Lua or Python).
+// The engine has engine.play_sound, engine.switch_scene, engine.quit, and engine.emit registered.
 // Returns nil after Shutdown.
-func (g *Game) ScriptVM() *script.VM {
-	return g.scriptVM
+func (g *Game) ScriptEngine() script.Engine {
+	return g.scriptEngine
 }
