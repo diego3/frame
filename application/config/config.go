@@ -18,11 +18,17 @@ type Config struct {
 	Layout       Layout            `yaml:"layout"`
 	Assets       Assets            `yaml:"assets"`
 	Physics      Physics           `yaml:"physics"`
+	Camera       Camera            `yaml:"camera"`        // optional: camera-follow settings
 	Input        map[string]any    `yaml:"input"`         // optional: action name -> key name(s), e.g. "dash": "ShiftLeft" or "move_left": ["A", "Left"]
 	ScriptEvents map[string]string `yaml:"script_events"` // optional: input action -> script event name, e.g. "dash": "DashRequested"
 	ScriptEngine string            `yaml:"script_engine"` // scripting backend: "lua" (default) or "python"
 	Scenes       map[string]string `yaml:"scenes"`        // optional: scene id -> scene type (see view/scene.Factories), e.g. "main_menu": "main_menu"
 	InitialScene string            `yaml:"initial_scene"` // optional: scene id to load first; defaults to "main_menu"
+}
+
+// Camera holds camera-follow settings. Empty (zero value) means a fixed camera at (0, 0).
+type Camera struct {
+	Follow string `yaml:"follow"` // name of the GameObject whose center the camera follows; empty = fixed camera
 }
 
 // Physics holds parameters for the physics simulation (e.g. Box2D).
@@ -50,9 +56,13 @@ type Window struct {
 }
 
 // Layout defines the logical screen size used for drawing (scaled to window).
+// LevelWidth/LevelHeight define the world size for camera-follow bounds; 0 means "same as
+// Width/Height", i.e. no scroll room (the camera stays fixed at (0, 0)).
 type Layout struct {
-	Width  int `yaml:"width"`
-	Height int `yaml:"height"`
+	Width       int `yaml:"width"`
+	Height      int `yaml:"height"`
+	LevelWidth  int `yaml:"level_width"`
+	LevelHeight int `yaml:"level_height"`
 }
 
 // Default returns a config with sensible defaults. GameRoot is set to "games/demo1".

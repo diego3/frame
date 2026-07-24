@@ -18,6 +18,7 @@ import (
 	"goengine/ports"
 	"goengine/resource"
 	"goengine/script"
+	"goengine/view/camera"
 	"goengine/view/ui"
 )
 
@@ -40,6 +41,9 @@ type MainMenu struct {
 	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
 	physicsSystem    *PhysicsSystem
 	debugDrawPhysics bool
+	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
+	camTarget        string         // name of the GameObject the camera follows
+	worldBuffer      *ebiten.Image  // offscreen sized to the level; drawn to screen translated by -cam.X/Y
 }
 
 // NewMainMenu returns a new main menu scene.
@@ -153,7 +157,44 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		m.physicsSystem.LogBodies()
 	}
 
+	// Camera-follow: only set up if the scene opts in via cfg.Camera.Follow.
+	if cfg.Camera.Follow != "" {
+		levelW, levelH := cfg.Layout.LevelWidth, cfg.Layout.LevelHeight
+		if levelW <= 0 {
+			levelW = cfg.Layout.Width
+		}
+		if levelH <= 0 {
+			levelH = cfg.Layout.Height
+		}
+		m.cam = camera.New(cfg.Layout.Width, cfg.Layout.Height, levelW, levelH)
+		m.camTarget = cfg.Camera.Follow
+		m.worldBuffer = ebiten.NewImage(levelW, levelH)
+	}
+
 	return nil
+}
+
+// cameraTargetCenter returns the world-space center of the camera's follow target, and whether it
+// was found. Center is the transform position plus half the physics body size when present,
+// falling back to the raw transform position (top-left) otherwise.
+func (m *MainMenu) cameraTargetCenter() (x, y float64, ok bool) {
+	if m.world == nil || m.camTarget == "" {
+		return 0, 0, false
+	}
+	obj := m.world.Find(m.camTarget)
+	if obj == nil {
+		return 0, 0, false
+	}
+	t := obj.Transform()
+	if t == nil {
+		return 0, 0, false
+	}
+	x, y = t.X, t.Y
+	if pb := obj.PhysicsBody(); pb != nil {
+		x += pb.Width / 2
+		y += pb.Height / 2
+	}
+	return x, y, true
 }
 
 // Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
@@ -167,6 +208,11 @@ func (m *MainMenu) Update(dt float64) {
 		m.physicsSystem.SyncToWorld(m.world)
 	}
 	m.world.Update(dt)
+	if m.cam != nil {
+		if cx, cy, ok := m.cameraTargetCenter(); ok {
+			m.cam.Follow(cx, cy)
+		}
+	}
 }
 
 // updateScripts runs the script engine's update(dt) (or Script.UpdateFuncName) for every active
@@ -224,9 +270,24 @@ func (m *MainMenu) Draw(screen *ebiten.Image) {
 		screen.DrawImage(m.titleImg, op)
 	}
 	if state.World != nil {
-		state.World.Draw(screen)
-		if state.DebugDrawPhysics && m.physicsSystem != nil {
-			m.physicsSystem.DrawDebug(screen, state.World)
+		if m.cam != nil {
+			// World objects draw at absolute world coordinates, which may exceed the visible
+			// viewport once a level is wider/taller than the screen. Draw them onto an
+			// offscreen buffer sized to the level, then blit that buffer onto the real screen
+			// translated by -cam.X/-cam.Y so only the camera's viewport is visible.
+			m.worldBuffer.Clear()
+			state.World.Draw(m.worldBuffer)
+			if state.DebugDrawPhysics && m.physicsSystem != nil {
+				m.physicsSystem.DrawDebug(m.worldBuffer, state.World)
+			}
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(-m.cam.X, -m.cam.Y)
+			screen.DrawImage(m.worldBuffer, op)
+		} else {
+			state.World.Draw(screen)
+			if state.DebugDrawPhysics && m.physicsSystem != nil {
+				m.physicsSystem.DrawDebug(screen, state.World)
+			}
 		}
 	}
 }
