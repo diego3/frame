@@ -1,0 +1,40 @@
+# GoEngine config (YAML) — Metal Slug demo scaffold (see docs/game_concept_metal_slug_demo.md).
+# Step 2 of the build plan: config + one scene, reusing Block/Ball placeholders for the level.
+# No player/projectile/enemy behavior yet (steps 3-5) — this only proves the level loads and
+# the camera (step 1) scrolls across a level wider than the screen.
+
+window:
+  width: 960
+  height: 540
+  title: "Metal Slug Demo"
+  resizable: true
+  fullscreen: false
+
+# Logical size for rendering (game coordinates); scaled to fit window.
+layout:
+  width: 960
+  height: 540
+  level_width: 2400   # level is ~2.5x the viewport width, so camera-follow has room to scroll
+  level_height: 540    # no vertical scroll room; the level is exactly screen-height tall
+
+# Asset paths (optional; used by scenes). Reused from games/demo1 (no new art needed yet).
+assets:
+  font_path: "assets/ShadeBlue-2OozX.ttf"
+  font_size: 24
+  click_sound: "assets/840321__robo9418__wooden-short-click.wav"
+  scene_path: "scenes/level1.yaml"
+
+# Physics (used when scene uses physics; e.g. Box2D).
+physics:
+  gravity_x: 0      # game units/s² (usually 0)
+  gravity_y: 800    # game units/s² (positive = down)
+  pixel_scale: 64   # game units per meter
+
+# Camera: follows the "player" placeholder GameObject, clamped to layout.level_width/level_height.
+camera:
+  follow: player
+
+# Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
+scenes:
+  level1: main_menu
+initial_scene: level1
