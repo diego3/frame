@@ -6,20 +6,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"goengine/events"
 )
 
 func TestBus_EmitCallsHandler(t *testing.T) {
 	bus := NewBus()
 
 	called := false
-	var got SceneChangeRequested
+	var got events.SceneChangeRequested
 
-	Subscribe(bus, func(ev SceneChangeRequested) {
+	Subscribe(bus, func(ev events.SceneChangeRequested) {
 		called = true
 		got = ev
 	})
 
-	want := SceneChangeRequested{SceneID: "main_menu"}
+	want := events.SceneChangeRequested{SceneID: "main_menu"}
 	Emit(bus, want)
 
 	assert.True(t, called, "handler should be called")
@@ -79,8 +81,8 @@ func TestBus_EmitWithNoHandlersDoesNothing(t *testing.T) {
 	bus := NewBus()
 
 	// Should not panic or crash even though there are no handlers.
-	Emit(bus, SceneChangeRequested{SceneID: "unused"})
-	Emit(bus, QuitRequested{})
+	Emit(bus, events.SceneChangeRequested{SceneID: "unused"})
+	Emit(bus, events.QuitRequested{})
 }
 
 func TestBus_DeferredQueueOrdersNestedEmits(t *testing.T) {
@@ -110,10 +112,10 @@ func TestBus_DeferredQueueOrdersNestedEmits(t *testing.T) {
 }
 
 type sceneChangeRecorder struct {
-	events []SceneChangeRequested
+	events []events.SceneChangeRequested
 }
 
-func (r *sceneChangeRecorder) Handle(ev SceneChangeRequested) {
+func (r *sceneChangeRecorder) Handle(ev events.SceneChangeRequested) {
 	r.events = append(r.events, ev)
 }
 
@@ -123,7 +125,7 @@ func TestBus_MethodSubscriber(t *testing.T) {
 
 	Subscribe(bus, rec.Handle)
 
-	ev := SceneChangeRequested{SceneID: "next_scene"}
+	ev := events.SceneChangeRequested{SceneID: "next_scene"}
 	Emit(bus, ev)
 
 	if assert.Len(t, rec.events, 1, "expected method handler to be called once") {
@@ -140,7 +142,7 @@ func TestBus_ConcurrentEmitAndSubscribe(t *testing.T) {
 	var count int64
 
 	// Always-present handler; every Emit should trigger this exactly once.
-	Subscribe(bus, func(ev SceneChangeRequested) {
+	Subscribe(bus, func(ev events.SceneChangeRequested) {
 		atomic.AddInt64(&count, 1)
 	})
 
@@ -154,7 +156,7 @@ func TestBus_ConcurrentEmitAndSubscribe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < emitsPerGoroutine; j++ {
-				Emit(bus, SceneChangeRequested{SceneID: "concurrent"})
+				Emit(bus, events.SceneChangeRequested{SceneID: "concurrent"})
 			}
 		}()
 	}
@@ -165,7 +167,7 @@ func TestBus_ConcurrentEmitAndSubscribe(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < goroutines*emitsPerGoroutine; i++ {
-			Subscribe(bus, func(ev SceneChangeRequested) {})
+			Subscribe(bus, func(ev events.SceneChangeRequested) {})
 		}
 	}()
 
@@ -176,4 +178,3 @@ func TestBus_ConcurrentEmitAndSubscribe(t *testing.T) {
 	expected := int64(goroutines * emitsPerGoroutine)
 	assert.Equal(t, expected, count)
 }
-

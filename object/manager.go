@@ -46,13 +46,9 @@ func (w *Manager) Update(dt float64) {
 		if !go_.Active {
 			continue
 		}
-		anim := go_.Animator()
-		if anim != nil && anim.Current != "" {
-			key := "spritesheet:" + anim.Current
-			if c := go_.GetComponent(key); c != nil {
-				if u, ok := c.(Updater); ok {
-					u.Update(dt)
-				}
+		if c, ok := go_.AnimatedComponent(); ok {
+			if u, ok := c.(Updater); ok {
+				u.Update(dt)
 			}
 			continue
 		}
@@ -72,20 +68,10 @@ func (w *Manager) Draw(screen *ebiten.Image) {
 		if !go_.Active {
 			continue
 		}
-		// FIXME: this animator IF is leaking logic over here, should be refactored
-		//  to be encapsuled in an Animator class or some kind of AnimatorManager
 		transform := go_.Transform()
-		anim := go_.Animator()
-		if anim != nil && anim.Current != "" {
-			// Debug: log knight's anim at draw time when one-shot to see if attack/dash reach Draw
-			// if go_.Name == "knight" && (anim.Current == "attack" || anim.Current == "attack2" || anim.Current == "dash") {
-			// 	log.Printf("[Draw] knight anim.Current=%q", anim.Current)
-			// }
-			key := "spritesheet:" + anim.Current
-			if c := go_.GetComponent(key); c != nil {
-				if d, ok := c.(Drawer); ok {
-					d.Draw(screen, transform)
-				}
+		if c, ok := go_.AnimatedComponent(); ok {
+			if d, ok := c.(Drawer); ok {
+				d.Draw(screen, transform)
 			}
 			continue
 		}

@@ -28,9 +28,15 @@ func New(cfg *config.Config) *Engine {
 	var loader ports.AssetLoader = mgr
 	u := ui.NewContainer()
 	sm := scene.NewManager()
-	// FIXME: this is a problem, add a new scene here is not ideal, it should be data driven
-	sm.Register("main_menu", func() (ports.Scene, error) { return scene.NewMainMenu(), nil })
-	g := game.New(cfg, loader, u, sm, "main_menu", bus)
+	// Scenes are declared in config (id -> type); types are looked up in scene.Factories.
+	// Unknown types are skipped here and surface as a clear "unknown scene id" error from
+	// scene.Manager.SwitchTo when Init() tries to load them.
+	for id, sceneType := range cfg.Scenes {
+		if factory, ok := scene.Factories[sceneType]; ok {
+			sm.Register(id, factory)
+		}
+	}
+	g := game.New(cfg, loader, u, sm, cfg.InitialScene, bus)
 	return &Engine{cfg: cfg, game: g}
 }
 
