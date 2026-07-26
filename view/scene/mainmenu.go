@@ -275,6 +275,70 @@ func (m *MainMenu) updateProjectiles(dt float64) {
 	}
 }
 
+// updateHitDetection checks every active projectile against every active enemy for an AABB
+// (axis-aligned bounding box) overlap — a plain rectangle intersection, not a Box2D contact. This
+// is the build plan's explicit recommendation for step 5: start with the simplest possible check
+// and only reach for real physics contacts (or a spatial partition, if the naive O(projectiles ×
+// enemies) loop ever shows up in profiling) if AABB proves insufficient — see
+// docs/game_concept_metal_slug_demo.md. On a hit: the projectile is consumed (deactivated) and the
+// enemy takes Projectile.Damage, dying (deactivated) at HP <= 0.
+func (m *MainMenu) updateHitDetection() {
+	for _, projGo := range m.world.Objects() {
+		if !projGo.Active || projGo.IsPrototype {
+			continue
+		}
+		proj, ok := projGo.GetComponent("projectile").(*object.Projectile)
+		if !ok {
+			continue
+		}
+		px, py, pw, ph, ok := aabb(projGo)
+		if !ok {
+			continue
+		}
+		for _, enemyGo := range m.world.Objects() {
+			if !enemyGo.Active || enemyGo.IsPrototype {
+				continue
+			}
+			enemy, ok := enemyGo.GetComponent("enemy").(*object.Enemy)
+			if !ok {
+				continue
+			}
+			ex, ey, ew, eh, ok := aabb(enemyGo)
+			if !ok || !aabbOverlap(px, py, pw, ph, ex, ey, ew, eh) {
+				continue
+			}
+			projGo.Active = false
+			enemy.HP -= proj.Damage
+			if enemy.HP <= 0 {
+				enemyGo.Active = false
+			}
+			break // this projectile is consumed; stop checking it against other enemies
+		}
+	}
+}
+
+// aabb returns the world-space bounding box (x, y, w, h) for go_, using its Block size if present
+// (both the projectile and this demo's enemy/player placeholders are Blocks), falling back to its
+// PhysicsBody size. ok is false if go_ has no Transform or no usable size.
+func aabb(go_ *object.GameObject) (x, y, w, h float64, ok bool) {
+	t := go_.Transform()
+	if t == nil {
+		return 0, 0, 0, 0, false
+	}
+	if blk, isBlock := go_.GetComponent("block").(*object.Block); isBlock && blk.Width > 0 && blk.Height > 0 {
+		return t.X, t.Y, blk.Width, blk.Height, true
+	}
+	if pb := go_.PhysicsBody(); pb != nil && pb.Width > 0 && pb.Height > 0 {
+		return t.X, t.Y, pb.Width, pb.Height, true
+	}
+	return 0, 0, 0, 0, false
+}
+
+// aabbOverlap reports whether two axis-aligned rectangles (top-left x/y, width w, height h) intersect.
+func aabbOverlap(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
+	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
+}
+
 // payloadFloat reads key from payload as a float64, accepting whatever numeric type the script
 // engine produced (Lua and Python payload numbers may arrive as float64, int, or int64), or
 // fallback if key is absent or not a number.
@@ -334,6 +398,7 @@ func (m *MainMenu) Update(dt float64) {
 	}
 	m.world.Update(dt)
 	m.updateProjectiles(dt)
+	m.updateHitDetection()
 	if m.cam != nil {
 		if cx, cy, ok := m.cameraTargetCenter(); ok {
 			m.cam.Follow(cx, cy)

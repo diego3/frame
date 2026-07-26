@@ -21,6 +21,7 @@ func init() {
 	RegisterComponentBuilder("script", buildScript)
 	RegisterComponentBuilder("intent_buffer", buildIntentBuffer)
 	RegisterComponentBuilder("projectile", buildProjectile)
+	RegisterComponentBuilder("enemy", buildEnemy)
 }
 
 func buildTransform(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
@@ -241,4 +242,13 @@ func buildProjectile(params map[string]interface{}, _ ports.AssetLoader) (object
 	velY, _ := floatParam(params, "vel_y")
 	damage, _ := floatParam(params, "damage")
 	return &object.Projectile{VelX: velX, VelY: velY, Damage: damage}, nil
+}
+
+// buildEnemy builds an Enemy component. hp defaults to 1 (dies on first hit) if unset or <= 0.
+func buildEnemy(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+	hp, _ := floatParam(params, "hp")
+	if hp <= 0 {
+		hp = 1
+	}
+	return &object.Enemy{HP: hp}, nil
 }

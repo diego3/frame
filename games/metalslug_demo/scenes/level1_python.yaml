@@ -35,6 +35,26 @@ objects:
       - type: intent_buffer
       - type: script
         path: "scripts/player_controller.py"
+  - name: enemy_1
+    components:
+      - type: transform
+        x: 1900
+        y: 380
+      - type: block
+        width: 50
+        height: 80
+        color_r: 160
+        color_g: 60
+        color_b: 60
+      - type: physics_body
+        body_type: kinematic
+        width: 50
+        height: 80
+        mass: 10
+      - type: script
+        path: "scripts/enemy_walk.py"
+      - type: enemy
+        hp: 1
   - name: ground
     components:
       - type: transform
