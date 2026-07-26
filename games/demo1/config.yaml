@@ -26,6 +26,12 @@ physics:
   gravity_y: 800    # game units/s² (positive = down)
   pixel_scale: 64  # game units per meter
 
+# Camera: follows the named GameObject's center, clamped to the level bounds (layout.level_width/
+# level_height below; omit or leave at layout size for no scroll room). demo1's level is exactly
+# screen-sized, so this validates the camera math without changing what's on screen.
+camera:
+  follow: knight
+
 # Input: action name -> key name(s). Keys can be a string or list (e.g. [ShiftLeft, ShiftRight]).
 # Omit to use engine defaults. Key names: A-Z, 0-9, Space, ShiftLeft, ShiftRight, Left, Right, Up, Down, F1-F12, etc.
 input:
