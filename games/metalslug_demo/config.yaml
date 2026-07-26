@@ -1,7 +1,6 @@
-# GoEngine config (YAML) — Metal Slug demo scaffold (see docs/game_concept_metal_slug_demo.md).
-# Step 2 of the build plan: config + one scene, reusing Block/Ball placeholders for the level.
-# No player/projectile/enemy behavior yet (steps 3-5) — this only proves the level loads and
-# the camera (step 1) scrolls across a level wider than the screen.
+# GoEngine config (YAML) — Metal Slug demo (see docs/game_concept_metal_slug_demo.md).
+# Player run + shoot (step 3) is wired up; move with A/D (defaults), shoot with the "attack"
+# action (default: J). Projectile movement and enemies are still steps 4-5 of the build plan.
 
 window:
   width: 960
@@ -30,9 +29,14 @@ physics:
   gravity_y: 800    # game units/s² (positive = down)
   pixel_scale: 64   # game units per meter
 
-# Camera: follows the "player" placeholder GameObject, clamped to layout.level_width/level_height.
+# Camera: follows the "player" GameObject, clamped to layout.level_width/level_height.
 camera:
   follow: player
+
+# Script events: when an input action is pressed, emit ScriptEmitted with this name so
+# on_event(name, payload) receives it. Same "attack" -> "AttackRequested" convention as demo1.
+script_events:
+  attack: "AttackRequested"
 
 # Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
 scenes:

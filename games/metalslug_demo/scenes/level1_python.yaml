@@ -1,11 +1,5 @@
-# Level 1 — data-driven scene (objects + components), same pattern as
-# games/demo1/scenes/main_menu.yaml. Placeholder Block/Ball shapes stand in for real sprites
-# (see docs/game_concept_metal_slug_demo.md "Open questions" — art comes later, doesn't block mechanics).
-#
-# Level is 2400x540 game units (layout.level_width/level_height in config.yaml), 2.5x the 960x540
-# viewport, so camera-follow (step 1) has room to scroll. Player run + shoot (step 3) is wired up;
-# shooting spawns a projectile GameObject (see view/scene/mainmenu.go's spawnProjectile), but
-# projectile movement and enemies are still steps 4-5 of the build plan.
+# Level 1 (Python scripting variant) — identical to level1.yaml except the player's script
+# points at the Python controller instead of the Lua one. See level1.yaml for the level notes.
 
 objects:
   - name: player
@@ -26,7 +20,7 @@ objects:
         mass: 10
       - type: intent_buffer
       - type: script
-        path: "scripts/player_controller.lua"
+        path: "scripts/player_controller.py"
   - name: ground
     components:
       - type: transform
