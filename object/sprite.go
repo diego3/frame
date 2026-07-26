@@ -13,6 +13,12 @@ type Sprite struct {
 // Type implements Component.
 func (Sprite) Type() string { return "sprite" }
 
+// Clone implements Component. The clone shares the same Image (a cached, read-only asset), not a copy of it.
+func (s *Sprite) Clone() Component {
+	clone := *s
+	return &clone
+}
+
 // Draw implements Drawer. Draws the image at the transform's position (top-left) with scale applied.
 func (s *Sprite) Draw(screen *ebiten.Image, transform *Transform) {
 	if s.Image == nil || transform == nil {

@@ -13,3 +13,9 @@ type Projectile struct {
 
 // Type implements Component.
 func (Projectile) Type() string { return "projectile" }
+
+// Clone implements Component.
+func (p *Projectile) Clone() Component {
+	clone := *p
+	return &clone
+}

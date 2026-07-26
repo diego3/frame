@@ -11,6 +11,12 @@ type Transform struct {
 // Type implements Component.
 func (Transform) Type() string { return "transform" }
 
+// Clone implements Component.
+func (t *Transform) Clone() Component {
+	clone := *t
+	return &clone
+}
+
 // NewTransform returns a Transform at (x, y) with scale 1.
 func NewTransform(x, y float64) *Transform {
 	return &Transform{X: x, Y: y, ScaleX: 1, ScaleY: 1}

@@ -21,6 +21,12 @@ var DefaultBallColor = color.RGBA{200, 80, 80, 255}
 // Type implements Component.
 func (Ball) Type() string { return "ball" }
 
+// Clone implements Component.
+func (b *Ball) Clone() Component {
+	clone := *b
+	return &clone
+}
+
 // Draw implements Drawer. Draws a filled circle; center = transform + (Radius, Radius).
 func (b *Ball) Draw(screen *ebiten.Image, transform *Transform) {
 	if transform == nil || b.Radius <= 0 {

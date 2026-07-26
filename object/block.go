@@ -21,6 +21,12 @@ var DefaultBlockColor = color.RGBA{100, 100, 120, 255}
 // Type implements Component.
 func (Block) Type() string { return "block" }
 
+// Clone implements Component.
+func (b *Block) Clone() Component {
+	clone := *b
+	return &clone
+}
+
 // Draw implements Drawer. Draws a filled rect at the transform's position.
 func (b *Block) Draw(screen *ebiten.Image, transform *Transform) {
 	if transform == nil || b.Width <= 0 || b.Height <= 0 {
