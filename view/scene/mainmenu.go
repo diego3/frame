@@ -45,6 +45,8 @@ type MainMenu struct {
 	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
 	camTarget        string         // name of the GameObject the camera follows
 	worldBuffer      *ebiten.Image  // offscreen sized to the level; drawn to screen translated by -cam.X/Y
+	levelWidth       float64        // world bounds for e.g. projectile off-level deactivation; always set, camera or not
+	levelHeight      float64
 }
 
 // NewMainMenu returns a new main menu scene.
@@ -159,18 +161,23 @@ func (m *MainMenu) Setup(cfg *config.Config, loader ports.AssetLoader, root port
 		m.physicsSystem.LogBodies()
 	}
 
+	// Level bounds: always set (falls back to viewport size when layout.level_width/height are
+	// unset), regardless of whether a camera is active. Used by e.g. updateProjectiles to
+	// deactivate projectiles that fly past the level edge — a Logic-layer concern independent of
+	// whatever the View currently has on screen.
+	m.levelWidth, m.levelHeight = float64(cfg.Layout.LevelWidth), float64(cfg.Layout.LevelHeight)
+	if m.levelWidth <= 0 {
+		m.levelWidth = float64(cfg.Layout.Width)
+	}
+	if m.levelHeight <= 0 {
+		m.levelHeight = float64(cfg.Layout.Height)
+	}
+
 	// Camera-follow: only set up if the scene opts in via cfg.Camera.Follow.
 	if cfg.Camera.Follow != "" {
-		levelW, levelH := cfg.Layout.LevelWidth, cfg.Layout.LevelHeight
-		if levelW <= 0 {
-			levelW = cfg.Layout.Width
-		}
-		if levelH <= 0 {
-			levelH = cfg.Layout.Height
-		}
-		m.cam = camera.New(cfg.Layout.Width, cfg.Layout.Height, levelW, levelH)
+		m.cam = camera.New(cfg.Layout.Width, cfg.Layout.Height, int(m.levelWidth), int(m.levelHeight))
 		m.camTarget = cfg.Camera.Follow
-		m.worldBuffer = ebiten.NewImage(levelW, levelH)
+		m.worldBuffer = ebiten.NewImage(int(m.levelWidth), int(m.levelHeight))
 	}
 
 	return nil
@@ -184,20 +191,26 @@ func (m *MainMenu) findControlled() *object.GameObject {
 		return nil
 	}
 	for _, go_ := range m.world.Objects() {
-		if go_.Active && go_.GetComponent("intent_buffer") != nil {
+		if go_.Active && !go_.IsPrototype && go_.GetComponent("intent_buffer") != nil {
 			return go_
 		}
 	}
 	return nil
 }
 
-// spawnProjectile builds a projectile GameObject at the controlled entity's center, offset in the
-// facing direction given by payload's "dir_x"/"dir_y" (defaults to facing right), and adds it to
-// the world. Movement and off-screen deactivation aren't implemented yet — see
-// docs/game_concept_metal_slug_demo.md build order step 4 — so the projectile is visible but
-// stationary until that lands.
+// spawnProjectile clones the scene's "projectile_prototype" GameObject (a Prototype-pattern
+// template: an inert GameObject marked IsPrototype, defined in the scene YAML like any other
+// object, never itself run or drawn — see object.GameObject.Clone and Manager.Update/Draw), then
+// repositions and aims the clone at the controlled entity's center, offset in the facing direction
+// given by payload's "dir_x"/"dir_y" (defaults to facing right). If the scene has no
+// "projectile_prototype", shooting is a silent no-op — a scene that never wires up shooting
+// doesn't need one.
 func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
 	if m.world == nil {
+		return
+	}
+	proto := m.world.Find("projectile_prototype")
+	if proto == nil || !proto.IsPrototype {
 		return
 	}
 	origin := m.findControlled()
@@ -217,20 +230,49 @@ func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
 	dirX, dirY := normalizeDir(payloadFloat(payload, "dir_x", 1), payloadFloat(payload, "dir_y", 0))
 
 	const (
-		projectileSpeed  = 360.0 // world units/sec, consumed once movement lands
+		projectileSpeed  = 360.0 // world units/sec
 		projectileDamage = 1.0
 		projectileSize   = 8.0
 		spawnOffset      = 30.0 // clear of the controlled entity's own body
 	)
 
-	proj := object.NewGameObject("projectile")
-	proj.AddComponent(&object.Transform{
-		X: cx + dirX*spawnOffset - projectileSize/2,
-		Y: cy + dirY*spawnOffset - projectileSize/2,
-	})
-	proj.AddComponent(&object.Block{Width: projectileSize, Height: projectileSize})
-	proj.AddComponent(&object.Projectile{VelX: dirX * projectileSpeed, VelY: dirY * projectileSpeed, Damage: projectileDamage})
+	proj := proto.Clone("projectile")
+	proj.Transform().X = cx + dirX*spawnOffset - projectileSize/2
+	proj.Transform().Y = cy + dirY*spawnOffset - projectileSize/2
+	if p, ok := proj.GetComponent("projectile").(*object.Projectile); ok {
+		p.VelX, p.VelY, p.Damage = dirX*projectileSpeed, dirY*projectileSpeed, projectileDamage
+	}
 	m.world.Add(proj)
+}
+
+// updateProjectiles moves each active projectile's Transform by its velocity, then deactivates it
+// once it leaves the level bounds (with a small margin). This isn't Projectile.Update(dt) because
+// Updater components don't receive their sibling Transform (see object.Updater) — moving a
+// projectile needs both, the same reason updateScripts and PhysicsSystem.SyncToWorld are also
+// MainMenu-level steps rather than generic per-component Update calls. Uses level bounds
+// (m.levelWidth/levelHeight), not the camera viewport — projectile lifetime is a Logic concern,
+// independent of what the View currently has on screen.
+func (m *MainMenu) updateProjectiles(dt float64) {
+	const despawnMargin = 32.0
+	for _, go_ := range m.world.Objects() {
+		if !go_.Active || go_.IsPrototype {
+			continue
+		}
+		proj, ok := go_.GetComponent("projectile").(*object.Projectile)
+		if !ok {
+			continue
+		}
+		t := go_.Transform()
+		if t == nil {
+			continue
+		}
+		t.X += proj.VelX * dt
+		t.Y += proj.VelY * dt
+		if t.X < -despawnMargin || t.X > m.levelWidth+despawnMargin ||
+			t.Y < -despawnMargin || t.Y > m.levelHeight+despawnMargin {
+			go_.Active = false
+		}
+	}
 }
 
 // payloadFloat reads key from payload as a float64, accepting whatever numeric type the script
@@ -291,6 +333,7 @@ func (m *MainMenu) Update(dt float64) {
 		m.physicsSystem.SyncToWorld(m.world)
 	}
 	m.world.Update(dt)
+	m.updateProjectiles(dt)
 	if m.cam != nil {
 		if cx, cy, ok := m.cameraTargetCenter(); ok {
 			m.cam.Follow(cx, cy)
@@ -302,7 +345,7 @@ func (m *MainMenu) Update(dt float64) {
 // GameObject with a script component, loading each script file (or FS-embedded source) on first use.
 func (m *MainMenu) updateScripts(dt float64) {
 	for _, go_ := range m.world.Objects() {
-		if !go_.Active {
+		if !go_.Active || go_.IsPrototype {
 			continue
 		}
 		sc := go_.GetComponent("script")

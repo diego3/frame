@@ -1,6 +1,6 @@
 # GoEngine config (YAML) — Metal Slug demo (see docs/game_concept_metal_slug_demo.md).
-# Player run + shoot (step 3) is wired up; move with A/D (defaults), shoot with the "attack"
-# action (default: J). Projectile movement and enemies are still steps 4-5 of the build plan.
+# Player run + shoot (step 3) and projectile movement + off-level deactivation (step 4) are wired
+# up; move with A/D (defaults), shoot with the "attack" action (default: J). Enemies are step 5.
 
 window:
   width: 960

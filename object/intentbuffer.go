@@ -8,3 +8,9 @@ type IntentBuffer struct {
 
 // Type implements Component.
 func (IntentBuffer) Type() string { return "intent_buffer" }
+
+// Clone implements Component.
+func (ib *IntentBuffer) Clone() Component {
+	clone := *ib
+	return &clone
+}

@@ -11,17 +11,17 @@ import (
 // Name identifies this animation (e.g. "idle", "run"); use with Animator to switch at runtime.
 // Loop: when true (default), animation cycles; when false, it plays once and stops on the last frame (Finished() then returns true).
 type Spritesheet struct {
-	Name        string         // action/animation name (e.g. "idle", "run")
-	Image       *ebiten.Image  // full sheet
-	FrameWidth  int            // width of one frame
-	FrameHeight int            // height of one frame
-	Cols        int            // number of columns (0 = derive from image width / FrameWidth)
-	Rows        int            // number of rows (0 = derive from image height / FrameHeight)
-	FrameIndex  int            // current frame (0-based)
-	FPS         float64        // frames per second for animation; 0 = static (no auto-advance)
-	Loop        bool           // when false, play once and stop (default true)
-	accumulator float64        // for FPS-based animation
-	finished    bool           // true when a non-looping animation has reached the last frame
+	Name        string        // action/animation name (e.g. "idle", "run")
+	Image       *ebiten.Image // full sheet
+	FrameWidth  int           // width of one frame
+	FrameHeight int           // height of one frame
+	Cols        int           // number of columns (0 = derive from image width / FrameWidth)
+	Rows        int           // number of rows (0 = derive from image height / FrameHeight)
+	FrameIndex  int           // current frame (0-based)
+	FPS         float64       // frames per second for animation; 0 = static (no auto-advance)
+	Loop        bool          // when false, play once and stop (default true)
+	accumulator float64       // for FPS-based animation
+	finished    bool          // true when a non-looping animation has reached the last frame
 }
 
 // Type implements Component. Returns "spritesheet" or "spritesheet:name" for unique keys per animation.
@@ -30,6 +30,14 @@ func (s *Spritesheet) Type() string {
 		return "spritesheet"
 	}
 	return "spritesheet:" + s.Name
+}
+
+// Clone implements Component. The clone shares the same Image (a cached, read-only asset) and
+// starts its own independent animation state (FrameIndex, accumulator, finished are copied by
+// value, so advancing one instance's animation doesn't affect the other's).
+func (s *Spritesheet) Clone() Component {
+	clone := *s
+	return &clone
 }
 
 // NumFrames returns the total number of frames (Cols * Rows, or derived from image size).

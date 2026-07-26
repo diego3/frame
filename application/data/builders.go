@@ -5,9 +5,9 @@ import (
 	"image/color"
 	"strings"
 
+	"goengine/object"
 	"goengine/physics"
 	"goengine/ports"
-	"goengine/object"
 )
 
 func init() {
@@ -20,6 +20,7 @@ func init() {
 	RegisterComponentBuilder("physics_body", buildPhysicsBody)
 	RegisterComponentBuilder("script", buildScript)
 	RegisterComponentBuilder("intent_buffer", buildIntentBuffer)
+	RegisterComponentBuilder("projectile", buildProjectile)
 }
 
 func buildTransform(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
@@ -230,4 +231,14 @@ func buildScript(params map[string]interface{}, _ ports.AssetLoader) (object.Com
 
 func buildIntentBuffer(_ map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
 	return &object.IntentBuffer{}, nil
+}
+
+// buildProjectile builds a Projectile component. Params are typically all left at 0 for a
+// "projectile_prototype" template (spawnProjectile overwrites them on every clone), but are parsed
+// for consistency and in case a scene ever places a live projectile directly in its YAML.
+func buildProjectile(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+	velX, _ := floatParam(params, "vel_x")
+	velY, _ := floatParam(params, "vel_y")
+	damage, _ := floatParam(params, "damage")
+	return &object.Projectile{VelX: velX, VelY: velY, Damage: damage}, nil
 }

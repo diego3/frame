@@ -2,6 +2,20 @@
 # points at the Python controller instead of the Lua one. See level1.yaml for the level notes.
 
 objects:
+  # Prototype (not a real object): "prototype: true" means this is never run or drawn (see
+  # object.GameObject.IsPrototype) — it only exists to be cloned by spawnProjectile. Its transform
+  # and projectile stats are overwritten on every clone; the values here are placeholders.
+  - name: projectile_prototype
+    prototype: true
+    components:
+      - type: transform
+      - type: block
+        width: 8
+        height: 8
+        color_r: 220
+        color_g: 220
+        color_b: 80
+      - type: projectile
   - name: player
     components:
       - type: transform
