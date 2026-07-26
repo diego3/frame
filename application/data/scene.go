@@ -23,8 +23,9 @@ type ObjectDef struct {
 	Components []map[string]interface{} `yaml:"components"`
 }
 
-// ComponentBuilder creates a Component from YAML params and the asset loader.
-type ComponentBuilder func(params map[string]interface{}, loader ports.AssetLoader) (object.Component, error)
+// ComponentBuilder creates a Component from YAML params and an image loader (the only asset kind
+// component builders need; see ports.ImageLoader).
+type ComponentBuilder func(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error)
 
 var builders = map[string]ComponentBuilder{}
 
@@ -60,7 +61,7 @@ func LoadSceneFS(fsys fs.FS, path string) (*SceneDef, error) {
 }
 
 // BuildWorld creates an object.Manager from a scene definition, using the loader for images.
-func BuildWorld(def *SceneDef, loader ports.AssetLoader) (*object.Manager, error) {
+func BuildWorld(def *SceneDef, loader ports.ImageLoader) (*object.Manager, error) {
 	if def == nil {
 		return object.NewManager(), nil
 	}
