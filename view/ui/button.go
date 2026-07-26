@@ -17,9 +17,9 @@ type Button struct {
 	OnClick       func() // called when the button is clicked (left mouse, just pressed)
 
 	// Colors (optional; zero value uses defaults)
-	FillColor   color.Color
-	HoverColor  color.Color
-	LabelColor  color.Color
+	FillColor  color.Color
+	HoverColor color.Color
+	LabelColor color.Color
 }
 
 // Default button colors.
