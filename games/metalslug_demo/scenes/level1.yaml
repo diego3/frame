@@ -6,7 +6,8 @@
 # viewport, so camera-follow (step 1) has room to scroll. Player run + shoot (step 3) is wired up;
 # shooting spawns a projectile GameObject by cloning "projectile_prototype" below (Prototype
 # pattern — see view/scene/mainmenu.go's spawnProjectile and object.GameObject.Clone). Projectile
-# movement + off-level deactivation (step 4) is wired up too; enemies are still step 5.
+# movement + off-level deactivation (step 4), and enemy walk + AABB hit-test/HP/death (step 5), are
+# both wired up — this scene is now the full build-plan MVP.
 
 objects:
   # Prototype (not a real object): "prototype: true" means this is never run or drawn (see
@@ -42,6 +43,30 @@ objects:
       - type: intent_buffer
       - type: script
         path: "scripts/player_controller.lua"
+  - name: enemy_1
+    components:
+      - type: transform
+        x: 1900
+        y: 380
+      - type: block
+        width: 50
+        height: 80
+        color_r: 160
+        color_g: 60
+        color_b: 60
+      - type: physics_body
+        body_type: kinematic
+        width: 50
+        height: 80
+        mass: 10
+      - type: script
+        path: "scripts/enemy_walk.lua"
+        # update_func must differ from player_controller.lua's "update" — LuaEngine runs all
+        # scripts in one shared global VM state, so two scripts both defining a global "update"
+        # would silently clobber each other. See enemy_walk.lua's own header comment.
+        update_func: "enemy_update"
+      - type: enemy
+        hp: 1
   - name: ground
     components:
       - type: transform
