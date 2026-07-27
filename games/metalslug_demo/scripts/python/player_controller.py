@@ -53,14 +53,14 @@ def update(dt):
     # Apply gravity
     velocity_y = velocity_y + GRAVITY * dt
 
-    # Ground detection: simple heuristic—if we're falling (velocity_y > 0), we're grounded.
-    # If we're clearly in the air (velocity_y < -50), we're airborne.
-    # Otherwise keep the previous state.
-    if velocity_y > 0:
-        is_grounded = True  # falling and likely to contact ground soon
+    # Ground detection: if we were falling (prev_velocity_y > 0) and velocity_y is now ~0,
+    # Box2D clamped us to the ground on contact. If moving upward (velocity_y < -50),
+    # we're definitely airborne. Otherwise assume grounded.
+    if prev_velocity_y > 0 and velocity_y == 0:
+        is_grounded = True  # was falling, now stopped by ground contact
     elif velocity_y < -50:
-        is_grounded = False  # clearly in the air (upward)
-    # else: velocity_y near zero, keep previous grounded state
+        is_grounded = False  # clearly moving upward
+    # else: keep previous grounded state
 
     # Apply jump if requested and grounded
     if pending_jump and is_grounded:
