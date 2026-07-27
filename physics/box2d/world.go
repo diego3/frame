@@ -203,6 +203,19 @@ func (b *bodyImpl) ApplyLinearImpulseToCenter(impulse physics.Vec2) {
 	b.b.ApplyLinearImpulseToCenter(imp, 1)
 }
 
+// DestroyBody removes body from the Box2D world and forgets any shape-name registrations for it
+// (so a later, unrelated body that happens to reuse the same shape id never inherits its name).
+func (w *worldImpl) DestroyBody(body physics.Body) {
+	b, ok := body.(*bodyImpl)
+	if !ok {
+		return
+	}
+	for _, shape := range b.b.GetShapes(nil) {
+		delete(w.shapeNames, shape.Id)
+	}
+	b.b.DestroyBody()
+}
+
 // RegisterBodyName associates a body with a GameObject name for contact reporting.
 // This registers all shapes in the body with the given name.
 func (w *worldImpl) RegisterBodyName(body physics.Body, name string) {

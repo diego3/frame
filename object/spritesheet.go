@@ -125,7 +125,24 @@ func (s *Spritesheet) Draw(screen *ebiten.Image, transform *Transform) {
 	)
 	sub := s.Image.SubImage(r).(*ebiten.Image)
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(transform.X, transform.Y)
+	// Scale first, then Translate: ebiten's GeoM.Scale scales the *entire* current matrix,
+	// translation included, so Translate-then-Scale would also scale the position (e.g. a
+	// character at X=100 with ScaleX=2 would be drawn at X=200) instead of just resizing/
+	// flipping the image in place before it's moved to its world position.
 	op.GeoM.Scale(transform.ScaleX, transform.ScaleY)
+	// A negative scale flips the frame about its own local origin (0,0), leaving it spanning
+	// [-frameSize*|scale|, 0] instead of [0, frameSize*|scale|] -- left unadjusted, the drawn
+	// footprint would jump to the opposite side of transform.X/Y depending on facing (e.g. a
+	// left-facing character would be drawn entirely to the left of its own physics body instead
+	// of overlapping it). Shifting by the scaled frame size keeps the footprint anchored at
+	// transform.X/Y consistently regardless of sign, matching how Block already behaves.
+	tx, ty := transform.X, transform.Y
+	if transform.ScaleX < 0 {
+		tx += float64(s.FrameWidth) * -transform.ScaleX
+	}
+	if transform.ScaleY < 0 {
+		ty += float64(s.FrameHeight) * -transform.ScaleY
+	}
+	op.GeoM.Translate(tx, ty)
 	screen.DrawImage(sub, op)
 }

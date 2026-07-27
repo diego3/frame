@@ -150,7 +150,12 @@ objects:
 
   # Prototype (not a real object): "prototype: true" means this is never run or drawn (see
   # object.GameObject.IsPrototype) — it only exists to be cloned by spawnProjectile. Its transform
-  # and projectile stats are overwritten on every clone; the values here are placeholders.
+  # (position) is overwritten on every clone; block width/height double as the projectile's own
+  # half-size for centering it on spawn (see MainMenu.spawnProjectile), so they're real, not
+  # placeholders. speed/spawn_clearance/despawn_margin/damage are template config, read as-is by
+  # every clone -- tune a projectile's whole feel (range, how far it spawns clear of the shooter's
+  # own body regardless of that shooter's size, how far past the level edge it survives) here,
+  # with no Go changes needed.
   - name: projectile_prototype
     prototype: true
     components:
@@ -162,22 +167,78 @@ objects:
         color_g: 220
         color_b: 80
       - type: projectile
+        damage: 1
+        speed: 360
+        spawn_clearance: 5
+        despawn_margin: 32
+
+  # Invisible entity (no block/ball/physics_body -- nothing to draw or collide) that hosts this
+  # demo's game-rule script. Anything that decides *when*/*what*/*with what parameters* to spawn
+  # (e.g. the periodic falling-sphere hazard below) is a game rule, not generic engine behavior,
+  # so it lives in Python here rather than in view/scene/mainmenu.go, which is a reusable scene
+  # type shared by other games/scenes.
+  - name: game_manager
+    components:
+      - type: transform
+      - type: script
+        path: "scripts/python/game_manager.py"
   - name: player
     components:
       - type: transform
         x: 100
         y: 380
-      - type: block
-        width: 50
-        height: 80
-        color_r: 90
-        color_g: 140
-        color_b: 90
-        facing_marker: true
+        # 45x45 source sprite frames scaled up ~1.78x (80/45) so the character's visual height
+        # roughly matches the 50x80 physics body below -- kept as a Transform scale (not a sprite
+        # resize) so the physics body/ground-contact/jump tuning done earlier this session (see
+        # platform_1..4's height comments) needs no changes. set_facing(dir_x) (see
+        # player_controller.py) only flips this value's sign, never its magnitude.
+        scale_x: 1.7778
+        scale_y: 1.7778
+      # Real art (vacaroxa's "generic run 'n' gun" pack) replacing the placeholder Block. Frames
+      # were sliced out of Player/SpriteSheet_player.png (8x7 grid, 45x45/frame) into per-
+      # animation strips (Player/anim_*.png) since object.Spritesheet has no way to window a
+      # sub-region of a shared master sheet -- see games/metalslug_demo/assets/.../Player for the
+      # slicing. Animator below shows exactly one of these per frame (see Manager.Draw).
+      - type: spritesheet
+        name: idle
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Player/anim_idle.png"
+        frame_width: 45
+        frame_height: 45
+        cols: 6
+        rows: 1
+        fps: 6
+      - type: spritesheet
+        name: run
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Player/anim_run.png"
+        frame_width: 45
+        frame_height: 45
+        cols: 6
+        rows: 1
+        fps: 12
+      - type: spritesheet
+        name: jump
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Player/anim_jump.png"
+        frame_width: 45
+        frame_height: 45
+        cols: 2
+        rows: 1
+        fps: 8
+        loop: false
+      - type: animator
+        current: idle
+      # width/height/offset derived from the sprite's actual opaque pixel bounding box (union
+      # across idle/run/jump frames, in the scaled ~80x80 on-screen frame: x~[25,64], y~[16,80]),
+      # not the old 50x80 placeholder-Block guess -- the debug overlay showed a hitbox visibly
+      # larger than the character. The bottom edge (offset_y + height = 80) is kept identical to
+      # before on purpose: that's the feet/ground-contact line the platform_1..4 height comments
+      # and jump-impulse tuning earlier this session were calibrated against, so this only trims
+      # the box inward (narrower, less headroom above), never moves where the feet touch ground.
       - type: physics_body
         body_type: dynamic
-        width: 50
-        height: 80
+        width: 35
+        height: 60
+        offset_x: 27
+        offset_y: 20
         friction: 0
         fixed_rotation: true
       - type: intent_buffer
@@ -317,3 +378,33 @@ objects:
         color_b: 90
       - type: physics_body
         body_type: static
+
+  # Falling-sphere prototype: a game-rule hazard, cloned periodically by game_manager.py (the
+  # "game_manager" entity's script, above) via engine.emit("SpawnEntity", ...) at a random X above
+  # the level with a randomized fuse -- see MainMenu.spawnEntity (Go) for the generic clone +
+  # physics-registration mechanism, and sphere_timer.py for each instance's own countdown/explode
+  # behavior. Also exercises the object.Manager's dynamic create/destroy lifecycle (clone +
+  # physics body creation on spawn, deactivation on explode) under a steady stream of short-lived
+  # objects. "prototype: true" means this exact object is never itself run/drawn/
+  # physics-initialized -- see object.GameObject.IsPrototype and PhysicsSystem.InitFromWorld's
+  # prototype skip -- only cloned. seconds/x/y here are placeholders, overwritten on every clone.
+  - name: sphere_prototype
+    prototype: true
+    components:
+      - type: transform
+      - type: ball
+        radius: 15
+        color_r: 230
+        color_g: 120
+        color_b: 40
+      - type: physics_body
+        body_type: dynamic
+        shape: circle
+        radius: 15
+        density: 1
+        restitution: 0.2
+        friction: 0.3
+      - type: timer
+        seconds: 4
+      - type: script
+        path: "scripts/python/sphere_timer.py"

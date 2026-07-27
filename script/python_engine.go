@@ -413,6 +413,35 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 			}
 		}, 0, "get_position(axis) -> float -- read position; axis: 'x' or 'y'")
 
+	m.Globals["get_timer"] = py.MustNewMethod("get_timer",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if t, ok := go_.GetComponent("timer").(*object.Timer); ok {
+				return py.Float(t.Remaining), nil
+			}
+			return py.Float(0), nil
+		}, 0, "get_timer() -> float -- read the Timer component's remaining seconds (0 if this entity has none)")
+
+	m.Globals["set_timer"] = py.MustNewMethod("set_timer",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "set_timer() requires 1 argument")
+			}
+			seconds, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			if t, ok := go_.GetComponent("timer").(*object.Timer); ok {
+				t.Remaining = seconds
+			}
+			return py.None, nil
+		}, 0, "set_timer(seconds) -- write the Timer component's remaining seconds")
+
+	m.Globals["destroy"] = py.MustNewMethod("destroy",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			go_.Active = false
+			return py.None, nil
+		}, 0, "destroy() -- deactivate this GameObject; it stops running/drawing but stays in the object pool")
+
 	m.Globals["set_facing"] = py.MustNewMethod("set_facing",
 		func(_ py.Object, args py.Tuple) (py.Object, error) {
 			if len(args) < 1 {
@@ -423,14 +452,24 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 				return nil, err
 			}
 			if t := go_.Transform(); t != nil {
+				// Flip the sign only; preserve whatever magnitude the scene set (e.g. a sprite
+				// scaled up to match its physics body's size), so switching facing direction
+				// never resets a scaled sprite back down to its native pixel size.
+				mag := t.ScaleX
+				if mag < 0 {
+					mag = -mag
+				}
+				if mag == 0 {
+					mag = 1
+				}
 				if dirX < 0 {
-					t.ScaleX = -1
+					t.ScaleX = -mag
 				} else {
-					t.ScaleX = 1
+					t.ScaleX = mag
 				}
 			}
 			return py.None, nil
-		}, 0, "set_facing(dir_x) -- flips Transform.ScaleX to -1/1 based on the sign of dir_x; Sprite/Spritesheet/Block all mirror on ScaleX < 0")
+		}, 0, "set_facing(dir_x) -- flips the sign of Transform.ScaleX (preserving its magnitude) based on the sign of dir_x; Sprite/Spritesheet/Block all mirror on ScaleX < 0")
 
 	return m
 }

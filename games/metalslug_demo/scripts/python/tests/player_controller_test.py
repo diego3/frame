@@ -32,7 +32,7 @@ class TestPlayerController(unittest.TestCase):
         pc.facing_x = 1.0
         pc.pending_shoot = False
         pc.pending_jump = False
-        pc._ground_contacts = 1
+        pc._touching = {"ground": True}
         pc.is_grounded = True
         pc.self.reset_mock()
         pc.engine.reset_mock()
@@ -40,7 +40,7 @@ class TestPlayerController(unittest.TestCase):
         pc.self.get_velocity.return_value = 0  # default: at rest vertically
 
     def _set_airborne(self):
-        pc._ground_contacts = 0
+        pc._touching = {}
         pc.is_grounded = False
 
     def test_initial_state(self):
@@ -75,6 +75,15 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_2"})
         self.assertTrue(pc.is_grounded)
 
+    def test_ground_detection_via_platform_contact(self):
+        """Regression test: landing on any of platform_1..4 must count as grounded -- these were
+        missing from GROUND_OBJECTS originally, so the player got stuck showing the jump
+        animation (and couldn't jump again) after landing on a platform."""
+        for platform in ("platform_1", "platform_2", "platform_3", "platform_4"):
+            self._set_airborne()
+            pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": platform})
+            self.assertTrue(pc.is_grounded, "landing on %s should set is_grounded" % platform)
+
     def test_ground_detection_ignores_unrelated_contact(self):
         """BeginContact between unrelated objects does not affect the player."""
         self._set_airborne()
@@ -100,14 +109,24 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_1"})
         self.assertTrue(pc.is_grounded, "should still be grounded via the ground contact")
 
-    def test_ground_contact_count_does_not_go_negative(self):
-        """A stray EndContact with no matching BeginContact must not leave the counter negative
-        (which would require multiple BeginContacts to ever become grounded again)."""
+    def test_ground_contact_state_survives_a_stray_end_contact(self):
+        """A stray EndContact with no matching prior BeginContact must not leave anything in a
+        state that requires multiple BeginContacts to become grounded again."""
         self._set_airborne()
         pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
-        self.assertEqual(pc._ground_contacts, 0)
+        self.assertEqual(pc._touching, {"ground": False})
         pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertTrue(pc.is_grounded)
+
+    def test_duplicate_begin_contact_does_not_break_end_contact(self):
+        """Regression test: the player spawns pre-assumed grounded on "ground" (setUp), and then
+        Box2D's own real BeginContact fires for that same already-existing contact once physics
+        starts stepping. That duplicate must be a no-op, not a double-count -- otherwise the one
+        real EndContact that eventually follows would never bring is_grounded to False, silently
+        allowing unlimited mid-air jumps for the rest of the session."""
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
+        pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
+        self.assertFalse(pc.is_grounded)
 
     def test_jump_when_grounded(self):
         """Jump applies an upward impulse when grounded."""
@@ -222,6 +241,33 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("JumpRequested", {})
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
+
+    def test_plays_idle_animation_when_grounded_and_not_moving(self):
+        pc.self.get_intent.return_value = 0
+        pc.update(0.016)
+        pc.self.play_animation.assert_called_once_with("idle")
+
+    def test_plays_run_animation_when_grounded_and_moving(self):
+        pc.self.get_intent.return_value = 1
+        pc.update(0.016)
+        pc.self.play_animation.assert_called_once_with("run")
+
+    def test_plays_jump_animation_when_airborne(self):
+        self._set_airborne()
+        pc.self.get_intent.return_value = 0
+        pc.update(0.016)
+        pc.self.play_animation.assert_called_once_with("jump")
+
+    def test_jump_animation_takes_priority_over_movement_while_airborne(self):
+        self._set_airborne()
+        pc.self.get_intent.return_value = 1
+        pc.update(0.016)
+        pc.self.play_animation.assert_called_once_with("jump")
+
+    def test_jump_resets_jump_animation_from_frame_zero(self):
+        pc.on_event("JumpRequested", {})
+        pc.update(0.016)
+        pc.self.reset_animation.assert_called_once_with("jump")
 
 
 if __name__ == "__main__":

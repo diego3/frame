@@ -1,6 +1,7 @@
 package scene
 
 import (
+	"fmt"
 	"image/color"
 	"io/fs"
 	"math"
@@ -46,6 +47,7 @@ type MainMenu struct {
 	worldBuffer      *ebiten.Image  // offscreen sized to the level; drawn to screen translated by -cam.X/Y
 	levelWidth       float64        // world bounds for e.g. projectile off-level deactivation; always set, camera or not
 	levelHeight      float64
+	spawnCount       int // fallback unique-name counter for spawnEntity when payload omits "name"
 }
 
 // NewMainMenu returns a new main menu scene.
@@ -74,6 +76,9 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 	event.Subscribe(bus, func(ev events.ScriptEmitted) {
 		if ev.Name == "SpawnProjectile" {
 			m.spawnProjectile(ev.Payload)
+		}
+		if ev.Name == "SpawnEntity" {
+			m.spawnEntity(ev.Payload)
 		}
 		if m.engine != nil {
 			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
@@ -223,6 +228,12 @@ func (m *MainMenu) findControlled() *object.GameObject {
 // given by payload's "dir_x"/"dir_y" (defaults to facing right). If the scene has no
 // "projectile_prototype", shooting is a silent no-op — a scene that never wires up shooting
 // doesn't need one.
+//
+// Speed/Damage/SpawnClearance/DespawnMargin all come from the prototype's own Projectile
+// component (YAML-configurable, see object.Projectile) rather than being hardcoded here, and the
+// spawn offset is computed from the *shooter's* own PhysicsBody size (half-extent along whichever
+// axis the shot fires on) plus that clearance — not a single fixed distance — so the projectile
+// spawns clear of the shooter's body regardless of how big or small that shooter is.
 func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
 	if m.world == nil {
 		return
@@ -240,38 +251,47 @@ func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
 		return
 	}
 	cx, cy := t.X, t.Y
+	originHalfWidth, originHalfHeight := 0.0, 0.0
 	if pb := origin.PhysicsBody(); pb != nil {
 		cx += pb.Width / 2
 		cy += pb.Height / 2
+		originHalfWidth, originHalfHeight = pb.Width/2, pb.Height/2
 	}
 
 	dirX, dirY := normalizeDir(payloadFloat(payload, "dir_x", 1), payloadFloat(payload, "dir_y", 0))
 
-	const (
-		projectileSpeed  = 360.0 // world units/sec
-		projectileDamage = 1.0
-		projectileSize   = 8.0
-		spawnOffset      = 30.0 // clear of the controlled entity's own body
-	)
-
 	proj := proto.Clone("projectile")
-	proj.Transform().X = cx + dirX*spawnOffset - projectileSize/2
-	proj.Transform().Y = cy + dirY*spawnOffset - projectileSize/2
-	if p, ok := proj.GetComponent("projectile").(*object.Projectile); ok {
-		p.VelX, p.VelY, p.Damage = dirX*projectileSpeed, dirY*projectileSpeed, projectileDamage
+
+	originHalfExtent := originHalfWidth
+	if math.Abs(dirY) > math.Abs(dirX) {
+		originHalfExtent = originHalfHeight
 	}
+	spawnOffset := originHalfExtent
+	if p, ok := proj.GetComponent("projectile").(*object.Projectile); ok {
+		spawnOffset += p.SpawnClearance
+		p.VelX, p.VelY = dirX*p.Speed, dirY*p.Speed
+	}
+
+	// Center the projectile on the spawn point using its own visual size (Block), if present.
+	halfW, halfH := 0.0, 0.0
+	if blk, ok := proj.GetComponent("block").(*object.Block); ok {
+		halfW, halfH = blk.Width/2, blk.Height/2
+	}
+	proj.Transform().X = cx + dirX*spawnOffset - halfW
+	proj.Transform().Y = cy + dirY*spawnOffset - halfH
+
 	m.world.Add(proj)
 }
 
 // updateProjectiles moves each active projectile's Transform by its velocity, then deactivates it
-// once it leaves the level bounds (with a small margin). This isn't Projectile.Update(dt) because
-// Updater components don't receive their sibling Transform (see object.Updater) — moving a
-// projectile needs both, the same reason updateScripts and PhysicsSystem.SyncToWorld are also
-// MainMenu-level steps rather than generic per-component Update calls. Uses level bounds
-// (m.levelWidth/levelHeight), not the camera viewport — projectile lifetime is a Logic concern,
-// independent of what the View currently has on screen.
+// once it leaves the level bounds (by more than its own configurable DespawnMargin -- see
+// object.Projectile). This isn't Projectile.Update(dt) because Updater components don't receive
+// their sibling Transform (see object.Updater) — moving a projectile needs both, the same reason
+// updateScripts and PhysicsSystem.SyncToWorld are also MainMenu-level steps rather than generic
+// per-component Update calls. Uses level bounds (m.levelWidth/levelHeight), not the camera
+// viewport — projectile lifetime is a Logic concern, independent of what the View currently has
+// on screen.
 func (m *MainMenu) updateProjectiles(dt float64) {
-	const despawnMargin = 32.0
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active || go_.IsPrototype {
 			continue
@@ -286,10 +306,70 @@ func (m *MainMenu) updateProjectiles(dt float64) {
 		}
 		t.X += proj.VelX * dt
 		t.Y += proj.VelY * dt
-		if t.X < -despawnMargin || t.X > m.levelWidth+despawnMargin ||
-			t.Y < -despawnMargin || t.Y > m.levelHeight+despawnMargin {
+		margin := proj.DespawnMargin
+		if t.X < -margin || t.X > m.levelWidth+margin ||
+			t.Y < -margin || t.Y > m.levelHeight+margin {
 			go_.Active = false
 		}
+	}
+}
+
+// spawnEntity clones a named prototype GameObject (Prototype pattern, the same mechanism
+// spawnProjectile already uses) at the position given in payload, and registers a physics body
+// for it if it has one. Triggered by a script calling engine.emit("SpawnEntity", {...}) -- this
+// is deliberately the *only* thing MainMenu knows how to do generically: deciding when, what, and
+// with what parameters to spawn is a game-rule concern that belongs in a script (e.g.
+// games/metalslug_demo/scripts/python/game_manager.py, which periodically spawns
+// "sphere_prototype" as a falling-hazard rule specific to this demo), not in this scene type,
+// which is also used by other, unrelated games/scenes. Silently does nothing if "prototype" is
+// missing/unknown, same convention as spawnProjectile.
+//
+// Recognized payload keys:
+//
+//	"prototype"     (string, required) name of a GameObject with prototype: true in the scene
+//	"name"          (string, optional) name for the new instance; auto-generated from the
+//	                prototype name + a counter if omitted
+//	"x", "y"        (number, optional) Transform position override
+//	"timer_seconds" (number, optional) overrides a cloned Timer component's Remaining, if present
+func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
+	if m.world == nil {
+		return
+	}
+	protoName, _ := payload["prototype"].(string)
+	if protoName == "" {
+		return
+	}
+	proto := m.world.Find(protoName)
+	if proto == nil || !proto.IsPrototype {
+		return
+	}
+
+	name, _ := payload["name"].(string)
+	if name == "" {
+		m.spawnCount++
+		name = fmt.Sprintf("%s_%d", protoName, m.spawnCount)
+	}
+
+	clone := proto.Clone(name)
+	if t := clone.Transform(); t != nil {
+		if _, ok := payload["x"]; ok {
+			t.X = payloadFloat(payload, "x", t.X)
+		}
+		if _, ok := payload["y"]; ok {
+			t.Y = payloadFloat(payload, "y", t.Y)
+		}
+	}
+	if _, ok := payload["timer_seconds"]; ok {
+		if timer, ok := clone.GetComponent("timer").(*object.Timer); ok {
+			timer.Remaining = payloadFloat(payload, "timer_seconds", timer.Remaining)
+		}
+	}
+
+	m.world.Add(clone)
+	if m.physicsSystem != nil {
+		// Safe to call repeatedly: InitFromWorld only creates bodies for objects whose
+		// PhysicsBody.Body is still nil, so this only ever creates the one new clone's body.
+		m.physicsSystem.InitFromWorld(m.world)
 	}
 }
 
@@ -404,6 +484,24 @@ func (m *MainMenu) cameraTargetCenter() (x, y float64, ok bool) {
 	return x, y, true
 }
 
+// destroyDeactivatedPhysicsBodies permanently removes the physics body of any GameObject a
+// script deactivated this frame (self.destroy(), see script/python_engine.go) but that still has
+// a live PhysicsBody.Body -- generic cleanup for any deactivated object, not specific to any one
+// game's use of it (e.g. the metalslug demo's falling-sphere hazard). Runs right after
+// updateScripts and before the physics step, so a body that a script just destroyed is never
+// simulated for one extra frame. See PhysicsSystem.DestroyBody for why Active=false alone isn't
+// enough for a dynamic body.
+func (m *MainMenu) destroyDeactivatedPhysicsBodies() {
+	for _, obj := range m.world.Objects() {
+		if obj.Active || obj.IsPrototype {
+			continue
+		}
+		if pb := obj.PhysicsBody(); pb != nil && pb.Body != nil {
+			m.physicsSystem.DestroyBody(m.world, obj.Name)
+		}
+	}
+}
+
 // Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
 func (m *MainMenu) Update(dt float64) {
 	if m.world == nil || m.engine == nil {
@@ -411,6 +509,7 @@ func (m *MainMenu) Update(dt float64) {
 	}
 	m.updateScripts(dt)
 	if m.physicsSystem != nil {
+		m.destroyDeactivatedPhysicsBodies()
 		m.physicsSystem.Step(dt)
 		m.physicsSystem.SyncToWorld(m.world)
 	}

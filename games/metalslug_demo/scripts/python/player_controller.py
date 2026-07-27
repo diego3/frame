@@ -22,12 +22,25 @@
 # excludes entirely. is_grounded only gates whether a jump is allowed; it does not affect gravity
 # or landing, both of which Box2D already handles correctly on its own.
 #
-# is_grounded is derived from a *count* of currently-touching GROUND_OBJECTS, not a plain
-# overwritten boolean: the player can touch more than one of them at once (e.g. standing on the
-# ground right next to a crate), and a boolean would go permanently False the moment contact with
-# just ONE of them ends, even while still resting on another (e.g. brushing a crate's corner while
-# walking, then separating from it, while never leaving the ground) -- this was reproducible and
-# looked exactly like "jumping randomly stops working" during normal movement.
+# is_grounded is derived from _touching, a {name: currently_touching_bool} map over
+# GROUND_OBJECTS, not a plain overwritten boolean or a raw counter:
+# - Not a boolean: the player can touch more than one of them at once (e.g. standing on the
+#   ground right next to a crate), and a boolean would go permanently False the moment contact
+#   with just ONE of them ends, even while still resting on another (e.g. brushing a crate's
+#   corner while walking, then separating from it, while never leaving the ground) -- this was
+#   reproducible and looked exactly like "jumping randomly stops working" during normal movement.
+# - Not a plain increment/decrement counter: the player spawns already resting on "ground", so
+#   _touching starts pre-populated with it -- but Box2D still fires its own real BeginContact for
+#   that same contact once physics starts stepping, which a counter would count a second time
+#   (spawn assumption + real event = 2), so the one real EndContact that eventually follows would
+#   only bring it down to 1, never to 0 -- permanently stuck grounded (silently allowing repeated
+#   mid-air jumps, since is_grounded never went False).
+# - A dict of booleans, not a set: gpython (this engine's Python backend) implements Python's set
+#   type with "add" only -- no "discard"/"remove" -- so a set can accumulate names but never drop
+#   one; a real EndContact would then raise AttributeError inside on_event, which the engine calls
+#   as "_ = engine.CallOnEvent(...)" (see MainMenu), silently discarding the error and leaving
+#   is_grounded permanently stuck True. Overwriting a dict entry (_touching[name] = False) needs
+#   no removal method at all, so it doesn't hit that gap.
 #
 # A jump request is also only ever honored at the instant it's grounded -- it is intentionally NOT
 # queued for whenever the player next lands. Queuing caused an unrelated but similarly confusing
@@ -43,13 +56,21 @@
 #   self.apply_linear_impulse_to_center(ix, iy)
 #   self.get_intent(key) -> float  (keys: "move_x", "move_y")
 #   self.get_position(axis) -> float  (axis: "x", "y")
-#   self.set_facing(dir_x) -- flips the block's facing marker (visual only, see object.Block)
+#   self.set_facing(dir_x) -- flips the sprite/block horizontally (visual only)
+#   self.play_animation(name) -- switch the visible spritesheet ("idle"/"run"/"jump")
+#   self.reset_animation(name) -- restart a one-shot animation from frame 0
 
 PLAYER_SPEED = 150
 JUMP_IMPULSE = 400  # instantaneous upward velocity change applied on jump, in game units/s
 
-# GameObjects the player can stand on; BeginContact/EndContact against any of these toggle is_grounded.
-GROUND_OBJECTS = ("ground", "crate_1", "crate_2", "crate_3")
+# GameObjects the player can stand on; BeginContact/EndContact against any of these toggle
+# is_grounded. Must list every standable static body in level1.yaml by name -- platform_1..4 were
+# missing here originally, so landing on one never set is_grounded, leaving the player stuck
+# showing the "jump" animation (and unable to jump again) despite visibly resting on a platform.
+GROUND_OBJECTS = (
+    "ground", "crate_1", "crate_2", "crate_3",
+    "platform_1", "platform_2", "platform_3", "platform_4",
+)
 
 # Facing direction, used as the shot direction; defaults to facing right until the player moves.
 facing_x = 1.0
@@ -57,40 +78,42 @@ facing_x = 1.0
 pending_shoot = False
 pending_jump = False
 
-# Number of GROUND_OBJECTS currently in contact with the player; is_grounded is derived from this
-# (see module docstring above for why a plain boolean isn't enough). Starts at 1: the player
-# spawns resting directly on the ground, matching the very first BeginContact that fires once
-# physics catches up.
-_ground_contacts = 1
+# {GROUND_OBJECTS name: currently touching?}; is_grounded is derived from this (see module
+# docstring above for why neither a plain boolean, a counter, nor a set is enough). Starts with
+# "ground" already True: the player spawns resting directly on it, before physics has run even
+# once to report the real contact.
+_touching = {"ground": True}
 is_grounded = True
 
 
 def on_event(name, payload):
-    global pending_shoot, pending_jump, is_grounded, _ground_contacts
+    global pending_shoot, pending_jump, is_grounded
     if name == "AttackRequested":
         pending_shoot = True
     elif name == "JumpRequested":
         if is_grounded:
             pending_jump = True
     elif name == "BeginContact":
-        if _touches_ground(payload):
-            _ground_contacts += 1
+        other = _ground_object_touched(payload)
+        if other is not None:
+            _touching[other] = True
             is_grounded = True
     elif name == "EndContact":
-        if _touches_ground(payload):
-            _ground_contacts = max(0, _ground_contacts - 1)
-            is_grounded = _ground_contacts > 0
+        other = _ground_object_touched(payload)
+        if other is not None:
+            _touching[other] = False
+            is_grounded = any(_touching.values())
 
 
-def _touches_ground(payload):
-    """True if the contact payload is between "player" and any GROUND_OBJECTS entry."""
+def _ground_object_touched(payload):
+    """Returns the GROUND_OBJECTS name involved in this player contact, or None."""
     name_a = payload.get("GameObjectNameA", "")
     name_b = payload.get("GameObjectNameB", "")
     if name_a == "player" and name_b in GROUND_OBJECTS:
-        return True
+        return name_b
     if name_b == "player" and name_a in GROUND_OBJECTS:
-        return True
-    return False
+        return name_a
+    return None
 
 
 def update(dt):
@@ -102,6 +125,16 @@ def update(dt):
         facing_x = 1.0 if move_x > 0 else -1.0
     self.set_facing(facing_x)
 
+    # Animation follows movement state alone (not shooting -- shooting is instantaneous, not a
+    # held pose): airborne always shows "jump" (the one-shot animation holds on its last frame,
+    # see level1.yaml's loop: false), otherwise "run" while moving or "idle" at rest.
+    if not is_grounded:
+        self.play_animation("jump")
+    elif move_x != 0:
+        self.play_animation("run")
+    else:
+        self.play_animation("idle")
+
     # Only drive the horizontal component; leave vertical velocity to Box2D (gravity + collision
     # response with the ground/crates run automatically for a dynamic body).
     current_vy = self.get_velocity("y")
@@ -109,6 +142,7 @@ def update(dt):
 
     if pending_jump and is_grounded:
         self.apply_linear_impulse_to_center(0, -JUMP_IMPULSE)
+        self.reset_animation("jump")  # replay from frame 0 (crouch) instead of resuming mid-air
         pending_jump = False
 
     if pending_shoot:

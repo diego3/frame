@@ -99,6 +99,9 @@ func (s *PhysicsSystem) CreateStaticBody(center physics.Vec2, width, height floa
 // Width/Height zero, uses the Block component's size if present.
 func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 	for _, obj := range objectWorld.Objects() {
+		if obj.IsPrototype {
+			continue
+		}
 		pb := obj.PhysicsBody()
 		if pb == nil || pb.Body != nil {
 			continue
@@ -171,6 +174,27 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 				body: body, width: w, height: h,
 				offsetX: pb.OffsetX, offsetY: pb.OffsetY,
 			}
+		}
+	}
+}
+
+// DestroyBody permanently removes name's physics body from the world and stops tracking it, so
+// SyncToWorld/DrawDebug never touch a freed body again. Call when a GameObject with a physics
+// body is permanently deactivated (e.g. via a script's self.destroy()) -- Active=false alone only
+// stops it being drawn/updated; a dynamic body (unlike this engine's sensor-only kinematic
+// bodies) keeps generating real solid collision response forever otherwise, so e.g. a "dead"
+// falling-hazard sphere would remain an invisible obstacle blocking the player. No-op if name has
+// no tracked body (static bodies are scene-authored and never destroyed this way).
+func (s *PhysicsSystem) DestroyBody(objectWorld *object.Manager, name string) {
+	entry, ok := s.kinematicBodies[name]
+	if !ok {
+		return
+	}
+	s.world.DestroyBody(entry.body)
+	delete(s.kinematicBodies, name)
+	if obj := objectWorld.Find(name); obj != nil {
+		if pb := obj.PhysicsBody(); pb != nil {
+			pb.Body = nil
 		}
 	}
 }

@@ -39,6 +39,9 @@ type World interface {
 	CreateBody(def BodyDef) (Body, error)
 	// Step advances the simulation by dt (seconds). Call once per frame.
 	Step(dt float64)
+	// DestroyBody permanently removes body from the simulation (and any name registered for it
+	// via RegisterBodyName). After this call, body must not be used again.
+	DestroyBody(body Body)
 	// RegisterBodyName registers a GameObject name for a body (for contact reporting).
 	// Call after creating a body if you want contact events.
 	RegisterBodyName(body Body, name string)

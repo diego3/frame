@@ -22,6 +22,7 @@ func init() {
 	RegisterComponentBuilder("intent_buffer", buildIntentBuffer)
 	RegisterComponentBuilder("projectile", buildProjectile)
 	RegisterComponentBuilder("enemy", buildEnemy)
+	RegisterComponentBuilder("timer", buildTimer)
 }
 
 func buildTransform(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
@@ -237,14 +238,32 @@ func buildIntentBuffer(_ map[string]interface{}, _ ports.ImageLoader) (object.Co
 	return &object.IntentBuffer{}, nil
 }
 
-// buildProjectile builds a Projectile component. Params are typically all left at 0 for a
-// "projectile_prototype" template (spawnProjectile overwrites them on every clone), but are parsed
-// for consistency and in case a scene ever places a live projectile directly in its YAML.
+// buildProjectile builds a Projectile component. vel_x/vel_y are typically left at 0 for a
+// "projectile_prototype" template (spawnProjectile recomputes them on every clone from speed and
+// the requested direction), but are parsed for consistency and in case a scene ever places a live
+// projectile directly in its YAML. speed/spawn_clearance/despawn_margin default to this demo's
+// original hardcoded values (360/5/32) when unset or <= 0, matching the zero-means-default
+// convention the other builders in this file use (buildBlock, buildBall, buildEnemy, ...).
 func buildProjectile(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	velX, _ := floatParam(params, "vel_x")
 	velY, _ := floatParam(params, "vel_y")
 	damage, _ := floatParam(params, "damage")
-	return &object.Projectile{VelX: velX, VelY: velY, Damage: damage}, nil
+	speed, _ := floatParam(params, "speed")
+	if speed <= 0 {
+		speed = 360
+	}
+	clearance, _ := floatParam(params, "spawn_clearance")
+	if clearance <= 0 {
+		clearance = 5
+	}
+	margin, _ := floatParam(params, "despawn_margin")
+	if margin <= 0 {
+		margin = 32
+	}
+	return &object.Projectile{
+		VelX: velX, VelY: velY, Damage: damage,
+		Speed: speed, SpawnClearance: clearance, DespawnMargin: margin,
+	}, nil
 }
 
 // buildEnemy builds an Enemy component. hp defaults to 1 (dies on first hit) if unset or <= 0.
@@ -254,4 +273,12 @@ func buildEnemy(params map[string]interface{}, _ ports.ImageLoader) (object.Comp
 		hp = 1
 	}
 	return &object.Enemy{HP: hp}, nil
+}
+
+// buildTimer builds a Timer component. "seconds" is typically left at a placeholder on a
+// prototype (e.g. "sphere_prototype") and overwritten by whatever spawns the clone (see
+// MainMenu.updateSphereSpawner), same convention as buildProjectile.
+func buildTimer(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
+	seconds, _ := floatParam(params, "seconds")
+	return &object.Timer{Remaining: seconds}, nil
 }
