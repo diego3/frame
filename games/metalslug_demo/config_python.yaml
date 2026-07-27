@@ -29,8 +29,15 @@ physics:
 camera:
   follow: player
 
+input:
+  move_left: A
+  move_right: D
+  attack: J
+  jump: Space
+
 script_events:
   attack: "AttackRequested"
+  jump: "JumpRequested"
 
 scenes:
   level1: main_menu

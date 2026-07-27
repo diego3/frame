@@ -34,10 +34,18 @@ physics:
 camera:
   follow: player
 
+# Input bindings (action -> key).
+input:
+  move_left: A
+  move_right: D
+  attack: J
+  jump: Space
+
 # Script events: when an input action is pressed, emit ScriptEmitted with this name so
 # on_event(name, payload) receives it. Same "attack" -> "AttackRequested" convention as demo1.
 script_events:
   attack: "AttackRequested"
+  jump: "JumpRequested"
 
 # Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
 scenes:

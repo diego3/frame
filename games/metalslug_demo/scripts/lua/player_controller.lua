@@ -1,4 +1,4 @@
--- Player controller script (Metal Slug demo, step 3: run + shoot).
+-- Player controller script (Metal Slug demo, step 3: run + shoot; enhanced with jump).
 -- Attach as the "script" component on the "player" GameObject.
 --
 -- Movement comes from self.get_intent() (IntentBuffer filled by MainMenu on MoveRequested);
@@ -8,19 +8,28 @@
 -- (see view/scene/mainmenu.go's spawnProjectile) since self has no position getter and the spawn
 -- position/size are engine concerns, not script ones.
 --
--- Projectile movement/off-screen deactivation isn't implemented yet (build order step 4) — a
--- spawned projectile is visible but stationary until that lands.
+-- Jump is triggered by on_event("JumpRequested") and applies an upward impulse if grounded.
+-- Physics gravity (configured in config.yaml) is applied by the engine; script tracks velocity_y
+-- across frames and detects ground contact.
 
 local PLAYER_SPEED = 150
+local JUMP_FORCE = 400  -- upward impulse in game units/s
+local GRAVITY = 800     -- gravity acceleration in game units/s² (must match config.yaml)
+local GROUND_CHECK_Y = 380  -- player y when on ground (460 - 50 height / 2)
 
 -- Facing direction, used as the shot direction; defaults to facing right until the player moves.
 local facing_x = 1.0
 
 local pending_shoot = false
+local pending_jump = false
+local velocity_y = 0
+local is_grounded = true
 
 function on_event(name, _payload)
   if name == "AttackRequested" then
     pending_shoot = true
+  elseif name == "JumpRequested" then
+    pending_jump = true
   end
 end
 
@@ -31,7 +40,21 @@ function update(dt)
     facing_x = move_x > 0 and 1.0 or -1.0
   end
 
-  self.set_velocity(move_x * PLAYER_SPEED, 0)
+  -- Apply gravity
+  velocity_y = velocity_y + GRAVITY * dt
+
+  -- Ground detection: if velocity is moving downward (or stationary) and we're at ground level
+  local current_y = self.get_position("y") or GROUND_CHECK_Y
+  is_grounded = (velocity_y >= 0 and current_y >= GROUND_CHECK_Y - 5)
+
+  -- Apply jump if requested and grounded
+  if pending_jump and is_grounded then
+    velocity_y = -JUMP_FORCE
+    is_grounded = false
+    pending_jump = false
+  end
+
+  self.set_velocity(move_x * PLAYER_SPEED, velocity_y)
 
   if pending_shoot then
     engine.emit("SpawnProjectile", { dir_x = facing_x, dir_y = 0 })
