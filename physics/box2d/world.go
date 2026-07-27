@@ -180,3 +180,4 @@ func (b *bodyImpl) ApplyLinearImpulseToCenter(impulse physics.Vec2) {
 	}
 	b.b.ApplyLinearImpulseToCenter(imp, 1)
 }
+

@@ -347,6 +347,29 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 			return py.String(go_.Name), nil
 		}, 0, "get_name() -> str -- return the entity name")
 
+	m.Globals["get_position"] = py.MustNewMethod("get_position",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "get_position() requires 1 argument")
+			}
+			axis, err := pyToString(args[0])
+			if err != nil {
+				return nil, err
+			}
+			t := go_.Transform()
+			if t == nil {
+				return py.Float(0), nil
+			}
+			switch axis {
+			case "x":
+				return py.Float(t.X), nil
+			case "y":
+				return py.Float(t.Y), nil
+			default:
+				return py.Float(0), nil
+			}
+		}, 0, "get_position(axis) -> float -- read position; axis: 'x' or 'y'")
+
 	return m
 }
 

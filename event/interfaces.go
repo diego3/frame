@@ -55,7 +55,8 @@ func (s *StateBus) Emit(ev interface{}) {
 	}
 	switch ev.(type) {
 	case events.SceneChanged, events.GameObjectCreated, events.GameObjectDestroyed,
-		events.GameObjectActivated, events.GameObjectDeactivated, events.ComponentAdded, events.ComponentRemoved:
+		events.GameObjectActivated, events.GameObjectDeactivated, events.ComponentAdded, events.ComponentRemoved,
+		events.BeginContact, events.EndContact:
 		s.bus.Emit(ev)
 	}
 }

@@ -41,6 +41,9 @@ input:
   attack: J
   jump: Space
 
+# Script engine: "lua" (default) or "python"
+script_engine: python
+
 # Script events: when an input action is pressed, emit ScriptEmitted with this name so
 # on_event(name, payload) receives it. Same "attack" -> "AttackRequested" convention as demo1.
 script_events:
