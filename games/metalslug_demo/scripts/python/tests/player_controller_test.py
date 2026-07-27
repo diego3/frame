@@ -33,7 +33,6 @@ class TestPlayerController(unittest.TestCase):
         pc.pending_jump = False
         pc.velocity_y = 0
         pc.is_grounded = True
-        pc.prev_velocity_y = 0
         pc.self.reset_mock()
         pc.engine.reset_mock()
         pc.self.get_intent.return_value = 0  # default: no movement
@@ -44,28 +43,50 @@ class TestPlayerController(unittest.TestCase):
         self.assertTrue(pc.is_grounded)
         self.assertEqual(pc.facing_x, 1.0)
 
-    def test_gravity_applied(self):
-        """Gravity increases velocity_y each frame."""
-        self.assertEqual(pc.velocity_y, 0)
+    def test_gravity_applied_when_airborne(self):
+        """Gravity increases velocity_y each frame while airborne."""
+        pc.is_grounded = False
+        pc.velocity_y = 0
         pc.update(0.016)  # ~60 FPS frame
         expected_vy = pc.GRAVITY * 0.016
         self.assertAlmostEqual(pc.velocity_y, expected_vy, places=2)
 
-    def test_ground_detection_on_impact(self):
-        """When falling (prev_vy > 0) and velocity near zero, player is grounded."""
-        # Simulate impact: was falling, now stopped by Box2D (velocity may be ~0, not exactly 0)
-        pc.velocity_y = 0.5  # floating point imprecision from Box2D
-        pc.prev_velocity_y = 50
-        # Run ground detection logic
-        if pc.prev_velocity_y > 0 and abs(pc.velocity_y) < 1:
-            pc.is_grounded = True
+    def test_velocity_clamped_while_grounded(self):
+        """While grounded, velocity_y does not accumulate downward each frame."""
+        pc.is_grounded = True
+        pc.velocity_y = 0
+        for _ in range(10):
+            pc.update(0.016)
+        self.assertEqual(pc.velocity_y, 0)
+
+    def test_ground_detection_via_begin_contact(self):
+        """BeginContact between player and ground sets is_grounded."""
+        pc.is_grounded = False
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertTrue(pc.is_grounded)
 
-    def test_ground_detection_airborne(self):
-        """When velocity_y < -50, player is airborne."""
-        pc.velocity_y = -100  # moving upward
-        if pc.velocity_y < -50:
-            pc.is_grounded = False
+    def test_ground_detection_via_begin_contact_name_order_reversed(self):
+        """BeginContact sets is_grounded regardless of which name is A vs B."""
+        pc.is_grounded = False
+        pc.on_event("BeginContact", {"GameObjectNameA": "ground", "GameObjectNameB": "player"})
+        self.assertTrue(pc.is_grounded)
+
+    def test_ground_detection_via_crate_contact(self):
+        """BeginContact against a crate also counts as grounded."""
+        pc.is_grounded = False
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_2"})
+        self.assertTrue(pc.is_grounded)
+
+    def test_ground_detection_ignores_unrelated_contact(self):
+        """BeginContact between unrelated objects does not affect the player."""
+        pc.is_grounded = False
+        pc.on_event("BeginContact", {"GameObjectNameA": "enemy_1", "GameObjectNameB": "ground"})
+        self.assertFalse(pc.is_grounded)
+
+    def test_ground_detection_via_end_contact(self):
+        """EndContact between player and ground clears is_grounded."""
+        pc.is_grounded = True
+        pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertFalse(pc.is_grounded)
 
     def test_jump_when_grounded(self):
@@ -73,7 +94,9 @@ class TestPlayerController(unittest.TestCase):
         pc.is_grounded = True
         pc.pending_jump = True
         pc.update(0.016)
-        self.assertEqual(pc.velocity_y, -pc.JUMP_FORCE)
+        # After the jump impulse, gravity still integrates the same frame.
+        expected_vy = -pc.JUMP_FORCE + pc.GRAVITY * 0.016
+        self.assertAlmostEqual(pc.velocity_y, expected_vy, places=1)
         self.assertFalse(pc.is_grounded)
         self.assertFalse(pc.pending_jump)
 
@@ -82,11 +105,10 @@ class TestPlayerController(unittest.TestCase):
         pc.is_grounded = False
         pc.velocity_y = -200
         pc.pending_jump = True
-        old_vy = pc.velocity_y
         pc.update(0.016)
         # Velocity should increase (less negative) due to gravity, not reset
         self.assertNotEqual(pc.velocity_y, -pc.JUMP_FORCE)
-        # Jump is not applied, but pending_jump stays True until applied
+        # Jump is not applied, but pending_jump stays True until grounded
         self.assertTrue(pc.pending_jump)
 
     def test_event_attack_requested(self):
@@ -148,29 +170,30 @@ class TestPlayerController(unittest.TestCase):
         )
 
     def test_full_jump_arc(self):
-        """Simulate jump arc: grounded -> jump -> airborne -> land."""
+        """Simulate jump arc: grounded -> jump -> airborne -> land (via BeginContact)."""
         pc.is_grounded = True
         pc.pending_jump = True
 
         # Frame 1: jump applied
         pc.update(0.016)
-        self.assertEqual(pc.velocity_y, -pc.JUMP_FORCE)
+        expected_vy = -pc.JUMP_FORCE + pc.GRAVITY * 0.016
+        self.assertAlmostEqual(pc.velocity_y, expected_vy, places=1)
         self.assertFalse(pc.is_grounded)
 
-        # Frames 2-35: ascending then descending (pico é ~frame 31-32)
+        # Frames 2-35: ascending then descending (peak is ~frame 31-32)
         for _ in range(2, 36):
             pc.update(0.016)
 
         # By frame 35, should be falling (velocity_y > 0)
         self.assertGreater(pc.velocity_y, 0, f"Should be falling by frame 35, but vy={pc.velocity_y}")
 
-        # Simulate landing
-        pc.prev_velocity_y = pc.velocity_y
-        pc.velocity_y = 0
-        if pc.prev_velocity_y > 0 and pc.velocity_y == 0:
-            pc.is_grounded = True
-
+        # Simulate landing: the engine reports contact once the body reaches the ground.
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertTrue(pc.is_grounded, "Should be grounded after impact")
+
+        # Next update should clamp velocity_y back to 0 instead of continuing to fall.
+        pc.update(0.016)
+        self.assertEqual(pc.velocity_y, 0)
 
 
 if __name__ == "__main__":

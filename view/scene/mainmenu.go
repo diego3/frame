@@ -79,6 +79,22 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
 		}
 	})
+	event.Subscribe(bus, func(ev events.BeginContact) {
+		if m.engine != nil {
+			_ = m.engine.CallOnEvent("BeginContact", map[string]interface{}{
+				"GameObjectNameA": ev.GameObjectNameA,
+				"GameObjectNameB": ev.GameObjectNameB,
+			})
+		}
+	})
+	event.Subscribe(bus, func(ev events.EndContact) {
+		if m.engine != nil {
+			_ = m.engine.CallOnEvent("EndContact", map[string]interface{}{
+				"GameObjectNameA": ev.GameObjectNameA,
+				"GameObjectNameB": ev.GameObjectNameB,
+			})
+		}
+	})
 
 	m.gameRoot = cfg.GameRoot
 	m.fsys = cfg.FS

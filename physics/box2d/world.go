@@ -72,6 +72,19 @@ func (w *worldImpl) CreateBody(def physics.BodyDef) (physics.Body, error) {
 	}
 	body := w.w.CreateBody(bdef)
 	shapeDef := b2.DefaultShapeDef()
+	// Box2D disables contact/sensor events per-shape by default; enable both so
+	// GetContactsNamesThisFrame() reliably reports touches.
+	shapeDef.EnableContactEvents = 1
+	shapeDef.EnableSensorEvents = 1
+	// Box2D's collision matrix never generates solid contacts (or collision response)
+	// between a kinematic body and a static body -- only kinematic-vs-dynamic and
+	// dynamic-vs-static do. Kinematic bodies in this engine are always driven directly by
+	// scripts via SetLinearVelocity and never receive real collision response from Box2D
+	// anyway, so marking their shape as a sensor costs nothing and is the only way to get
+	// overlap events (e.g. for ground detection) against static geometry.
+	if def.Type == physics.BodyKinematic {
+		shapeDef.IsSensor = 1
+	}
 	if def.Density > 0 {
 		shapeDef.Density = float32(def.Density)
 	} else {
@@ -201,26 +214,43 @@ func (w *worldImpl) RegisterBodyName(body physics.Body, name string) {
 }
 
 // GetContactsNamesThisFrame returns pairs of GameObject names that began and ended contact this frame.
+// Merges solid-body contact events (dynamic-vs-static, dynamic-vs-dynamic, ...) with sensor
+// overlap events (used for kinematic bodies -- see CreateBody) into a single named-pair result.
 func (w *worldImpl) GetContactsNamesThisFrame() (began, ended [][2]string) {
-	events := w.w.GetContactEvents()
-
-	// Process begin contact events
-	for _, ev := range events.BeginEvents {
-		nameA := w.shapeNames[ev.ShapeIdA]
-		nameB := w.shapeNames[ev.ShapeIdB]
-		if nameA != "" && nameB != "" && nameA != nameB {
-			began = append(began, [2]string{nameA, nameB})
+	contacts := w.w.GetContactEvents()
+	for _, ev := range contacts.BeginEvents {
+		if pair, ok := w.namePair(ev.ShapeIdA, ev.ShapeIdB); ok {
+			began = append(began, pair)
+		}
+	}
+	for _, ev := range contacts.EndEvents {
+		if pair, ok := w.namePair(ev.ShapeIdA, ev.ShapeIdB); ok {
+			ended = append(ended, pair)
 		}
 	}
 
-	// Process end contact events
-	for _, ev := range events.EndEvents {
-		nameA := w.shapeNames[ev.ShapeIdA]
-		nameB := w.shapeNames[ev.ShapeIdB]
-		if nameA != "" && nameB != "" && nameA != nameB {
-			ended = append(ended, [2]string{nameA, nameB})
+	sensors := w.w.GetSensorEvents()
+	for _, ev := range sensors.BeginEvents {
+		if pair, ok := w.namePair(ev.SensorShapeId, ev.VisitorShapeId); ok {
+			began = append(began, pair)
+		}
+	}
+	for _, ev := range sensors.EndEvents {
+		if pair, ok := w.namePair(ev.SensorShapeId, ev.VisitorShapeId); ok {
+			ended = append(ended, pair)
 		}
 	}
 
 	return
+}
+
+// namePair resolves two shape ids to their registered GameObject names. Returns ok=false if
+// either shape is unregistered or both belong to the same GameObject (self-contact).
+func (w *worldImpl) namePair(idA, idB b2.ShapeId) ([2]string, bool) {
+	nameA := w.shapeNames[idA]
+	nameB := w.shapeNames[idB]
+	if nameA == "" || nameB == "" || nameA == nameB {
+		return [2]string{}, false
+	}
+	return [2]string{nameA, nameB}, true
 }

@@ -9,8 +9,12 @@
 # position/size are engine concerns, not script ones.
 #
 # Jump is triggered by on_event("JumpRequested") and applies an upward impulse if grounded.
-# Physics gravity (configured in config.yaml) is applied by the engine; script tracks velocity_y
-# across frames and detects ground contact.
+# Vertical velocity is tracked and integrated (gravity) in this script rather than by Box2D,
+# because the player is a kinematic body: Box2D never applies gravity or collision response to
+# kinematic bodies. Ground contact is reported by the engine via on_event("BeginContact"/
+# "EndContact") -- driven by physics/box2d's sensor-based overlap detection registered against
+# the player's kinematic body (see physics/box2d/world.go's CreateBody/GetContactsNamesThisFrame)
+# -- and is the only source of truth for is_grounded.
 #
 # Engine API (injected as module global "engine"):
 #   engine.emit(name, payload={})
@@ -24,6 +28,9 @@ PLAYER_SPEED = 150
 JUMP_FORCE = 400  # upward impulse in game units/s
 GRAVITY = 800  # gravity acceleration in game units/s² (must match config.yaml)
 
+# GameObjects the player can stand on; BeginContact/EndContact against any of these toggle is_grounded.
+GROUND_OBJECTS = ("ground", "crate_1", "crate_2", "crate_3")
+
 # Facing direction, used as the shot direction; defaults to facing right until the player moves.
 facing_x = 1.0
 
@@ -31,7 +38,6 @@ pending_shoot = False
 pending_jump = False
 velocity_y = 0
 is_grounded = True
-prev_velocity_y = 0
 
 
 def on_event(name, payload):
@@ -41,52 +47,50 @@ def on_event(name, payload):
     elif name == "JumpRequested":
         pending_jump = True
     elif name == "BeginContact":
-        # Check if we're touching the ground (player touching ground or crate)
-        name_a = payload.get("GameObjectNameA", "")
-        name_b = payload.get("GameObjectNameB", "")
-        if name_a == "player" and name_b in ("ground", "crate_1", "crate_2", "crate_3"):
-            is_grounded = True
-        elif name_b == "player" and name_a in ("ground", "crate_1", "crate_2", "crate_3"):
+        if _touches_ground(payload):
             is_grounded = True
     elif name == "EndContact":
-        # When leaving ground, not immediately grounded (will be set based on velocity)
-        name_a = payload.get("GameObjectNameA", "")
-        name_b = payload.get("GameObjectNameB", "")
-        if (name_a == "player" and name_b in ("ground", "crate_1", "crate_2", "crate_3")) or \
-           (name_b == "player" and name_a in ("ground", "crate_1", "crate_2", "crate_3")):
+        if _touches_ground(payload):
             is_grounded = False
 
 
+def _touches_ground(payload):
+    """True if the contact payload is between "player" and any GROUND_OBJECTS entry."""
+    name_a = payload.get("GameObjectNameA", "")
+    name_b = payload.get("GameObjectNameB", "")
+    if name_a == "player" and name_b in GROUND_OBJECTS:
+        return True
+    if name_b == "player" and name_a in GROUND_OBJECTS:
+        return True
+    return False
+
+
 def update(dt):
-    global facing_x, pending_shoot, pending_jump, velocity_y, is_grounded, prev_velocity_y
+    global facing_x, pending_shoot, pending_jump, velocity_y, is_grounded
 
     move_x = self.get_intent("move_x")
 
     if move_x != 0:
         facing_x = 1.0 if move_x > 0 else -1.0
 
-    # Apply gravity
-    velocity_y = velocity_y + GRAVITY * dt
-
-    # Ground detection: if we were falling (prev_velocity_y > 0) and velocity is now ~0,
-    # Box2D clamped us to the ground on contact. If moving upward (velocity_y < -50),
-    # we're definitely airborne. Otherwise assume grounded.
-    if prev_velocity_y > 0 and abs(velocity_y) < 1:
-        is_grounded = True  # was falling, now stopped by ground contact
-    elif velocity_y < -50:
-        is_grounded = False  # clearly moving upward
-    # else: keep previous grounded state
-
-    # Apply jump if requested and grounded
+    # Apply jump if requested and grounded (is_grounded is authoritative here: it is only
+    # ever set by BeginContact/EndContact, see on_event above -- kinematic bodies never get
+    # real collision response from Box2D, so nothing else can tell us we're on the ground).
     if pending_jump and is_grounded:
         velocity_y = -JUMP_FORCE
         is_grounded = False
         pending_jump = False
+
+    if is_grounded and velocity_y >= 0:
+        # Resting on the ground: don't accumulate downward velocity (kinematic bodies are
+        # never stopped by collision on their own, so gravity would otherwise integrate
+        # forever and the player would sink through the floor).
+        velocity_y = 0
+    else:
+        velocity_y = velocity_y + GRAVITY * dt
 
     self.set_velocity(move_x * PLAYER_SPEED, velocity_y)
 
     if pending_shoot:
         engine.emit("SpawnProjectile", {"dir_x": facing_x, "dir_y": 0})
         pending_shoot = False
-
-    prev_velocity_y = velocity_y
