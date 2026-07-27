@@ -36,9 +36,11 @@ objects:
         color_g: 140
         color_b: 90
       - type: physics_body
-        body_type: kinematic
+        body_type: dynamic
         width: 50
         height: 80
+        friction: 0
+        fixed_rotation: true
       - type: intent_buffer
       - type: script
         path: "scripts/python/player_controller.py"

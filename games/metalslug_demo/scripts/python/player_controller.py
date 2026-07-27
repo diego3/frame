@@ -8,25 +8,32 @@
 # view/scene/mainmenu.go's spawnProjectile) since self has no position getter and the spawn
 # position/size are engine concerns, not script ones.
 #
-# Jump is triggered by on_event("JumpRequested") and applies an upward impulse if grounded.
-# Vertical velocity is tracked and integrated (gravity) in this script rather than by Box2D,
-# because the player is a kinematic body: Box2D never applies gravity or collision response to
-# kinematic bodies. Ground contact is reported by the engine via on_event("BeginContact"/
-# "EndContact") -- driven by physics/box2d's sensor-based overlap detection registered against
-# the player's kinematic body (see physics/box2d/world.go's CreateBody/GetContactsNamesThisFrame)
-# -- and is the only source of truth for is_grounded.
+# The player is a DYNAMIC body with fixed_rotation (see level1.yaml) -- the standard Box2D
+# character-controller setup: gravity and vertical collision response (landing on the ground/
+# crates) are handled entirely by Box2D itself, exactly like any other dynamic body. This script
+# only ever sets the horizontal velocity component directly and leaves the vertical component
+# alone, except for jumping, which applies an instant upward impulse instead of teleporting the
+# velocity. Fixed rotation stops the box from tipping over from asymmetric contact torque (e.g.
+# clipping a crate corner), which a free-rotating dynamic body would otherwise do.
+#
+# Ground contact is reported by the engine via on_event("BeginContact"/"EndContact") -- ordinary
+# Box2D solid-body contacts fire correctly here because dynamic-vs-static (and dynamic-vs-
+# kinematic) always generate them, unlike kinematic-vs-static which Box2D's collision matrix
+# excludes entirely. is_grounded only gates whether a jump is allowed; it does not affect gravity
+# or landing, both of which Box2D already handles correctly on its own.
 #
 # Engine API (injected as module global "engine"):
 #   engine.emit(name, payload={})
 #
 # Entity API (injected as module global "self" before each update call):
 #   self.set_velocity(vx, vy)
+#   self.get_velocity(axis) -> float  (axis: "x", "y")
+#   self.apply_linear_impulse_to_center(ix, iy)
 #   self.get_intent(key) -> float  (keys: "move_x", "move_y")
 #   self.get_position(axis) -> float  (axis: "x", "y")
 
 PLAYER_SPEED = 150
-JUMP_FORCE = 400  # upward impulse in game units/s
-GRAVITY = 800  # gravity acceleration in game units/s² (must match config.yaml)
+JUMP_IMPULSE = 400  # instantaneous upward velocity change applied on jump, in game units/s
 
 # GameObjects the player can stand on; BeginContact/EndContact against any of these toggle is_grounded.
 GROUND_OBJECTS = ("ground", "crate_1", "crate_2", "crate_3")
@@ -36,7 +43,6 @@ facing_x = 1.0
 
 pending_shoot = False
 pending_jump = False
-velocity_y = 0
 is_grounded = True
 
 
@@ -66,30 +72,21 @@ def _touches_ground(payload):
 
 
 def update(dt):
-    global facing_x, pending_shoot, pending_jump, velocity_y, is_grounded
+    global facing_x, pending_shoot, pending_jump
 
     move_x = self.get_intent("move_x")
 
     if move_x != 0:
         facing_x = 1.0 if move_x > 0 else -1.0
 
-    # Apply jump if requested and grounded (is_grounded is authoritative here: it is only
-    # ever set by BeginContact/EndContact, see on_event above -- kinematic bodies never get
-    # real collision response from Box2D, so nothing else can tell us we're on the ground).
+    # Only drive the horizontal component; leave vertical velocity to Box2D (gravity + collision
+    # response with the ground/crates run automatically for a dynamic body).
+    current_vy = self.get_velocity("y")
+    self.set_velocity(move_x * PLAYER_SPEED, current_vy)
+
     if pending_jump and is_grounded:
-        velocity_y = -JUMP_FORCE
-        is_grounded = False
+        self.apply_linear_impulse_to_center(0, -JUMP_IMPULSE)
         pending_jump = False
-
-    if is_grounded and velocity_y >= 0:
-        # Resting on the ground: don't accumulate downward velocity (kinematic bodies are
-        # never stopped by collision on their own, so gravity would otherwise integrate
-        # forever and the player would sink through the floor).
-        velocity_y = 0
-    else:
-        velocity_y = velocity_y + GRAVITY * dt
-
-    self.set_velocity(move_x * PLAYER_SPEED, velocity_y)
 
     if pending_shoot:
         engine.emit("SpawnProjectile", {"dir_x": facing_x, "dir_y": 0})

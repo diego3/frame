@@ -39,3 +39,16 @@ func stringParam(params map[string]interface{}, key string) (string, error) {
 	}
 	return s, nil
 }
+
+// boolParam returns a bool from params. Missing keys default to false.
+func boolParam(params map[string]interface{}, key string) (bool, error) {
+	v, ok := params[key]
+	if !ok {
+		return false, nil
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, fmt.Errorf("param %q: expected bool, got %T", key, v)
+	}
+	return b, nil
+}

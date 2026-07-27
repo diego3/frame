@@ -199,19 +199,21 @@ func buildPhysicsBody(params map[string]interface{}, _ ports.ImageLoader) (objec
 	if s, _ := stringParam(params, "shape"); strings.ToLower(s) == "circle" {
 		shape = physics.ShapeCircle
 	}
+	fixedRotation, _ := boolParam(params, "fixed_rotation")
 	return &object.PhysicsBody{
-		Body:        nil,
-		BodyType:    bodyType,
-		Shape:       shape,
-		Width:       width,
-		Height:      height,
-		Radius:      radius,
-		OffsetX:     offsetX,
-		OffsetY:     offsetY,
-		Density:     density,
-		Mass:        mass,
-		Restitution: restitution,
-		Friction:    friction,
+		Body:          nil,
+		BodyType:      bodyType,
+		Shape:         shape,
+		Width:         width,
+		Height:        height,
+		Radius:        radius,
+		OffsetX:       offsetX,
+		OffsetY:       offsetY,
+		Density:       density,
+		Mass:          mass,
+		Restitution:   restitution,
+		Friction:      friction,
+		FixedRotation: fixedRotation,
 	}, nil
 }
 

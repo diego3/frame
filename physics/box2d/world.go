@@ -60,6 +60,9 @@ func (w *worldImpl) b2ToGame(v b2.Vec2) physics.Vec2 {
 func (w *worldImpl) CreateBody(def physics.BodyDef) (physics.Body, error) {
 	bdef := b2.DefaultBodyDef()
 	bdef.Position = w.gameToB2(def.Position)
+	if def.FixedRotation {
+		bdef.FixedRotation = 1
+	}
 	switch def.Type {
 	case physics.BodyStatic:
 		bdef.Type1 = b2.StaticBody

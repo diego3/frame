@@ -145,15 +145,16 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 			Y: t.Y + h*0.5 + pb.OffsetY,
 		}
 		body, err := s.world.CreateBody(physics.BodyDef{
-			Position:    center,
-			Width:       w,
-			Height:      h,
-			Radius:      radius,
-			Type:        pb.BodyType,
-			Shape:       shape,
-			Density:     density,
-			Restitution: pb.Restitution,
-			Friction:    pb.Friction,
+			Position:      center,
+			Width:         w,
+			Height:        h,
+			Radius:        radius,
+			Type:          pb.BodyType,
+			Shape:         shape,
+			Density:       density,
+			Restitution:   pb.Restitution,
+			Friction:      pb.Friction,
+			FixedRotation: pb.FixedRotation,
 		})
 		if err != nil {
 			continue

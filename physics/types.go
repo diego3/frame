@@ -23,13 +23,14 @@ const (
 // Restitution: 0 = no bounce, 1 = full bounce. Friction: 0 = slippery, typical 0.2–0.5.
 // Density is mass per unit area (dynamic bodies); 0 = engine default (1).
 type BodyDef struct {
-	Position    Vec2
-	Width       float64
-	Height      float64
-	Radius      float64  // for ShapeCircle (game units)
-	Type        BodyType
-	Shape       ShapeKind
-	Density     float64
-	Restitution float64 // 0–1, bounce; 0 = default
-	Friction    float64 // 0+; 0 = default
+	Position      Vec2
+	Width         float64
+	Height        float64
+	Radius        float64  // for ShapeCircle (game units)
+	Type          BodyType
+	Shape         ShapeKind
+	Density       float64
+	Restitution   float64 // 0–1, bounce; 0 = default
+	Friction      float64 // 0+; 0 = default
+	FixedRotation bool    // dynamic bodies only: prevents rotation from collision torque (e.g. character controllers)
 }

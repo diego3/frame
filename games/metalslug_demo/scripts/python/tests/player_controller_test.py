@@ -31,33 +31,25 @@ class TestPlayerController(unittest.TestCase):
         pc.facing_x = 1.0
         pc.pending_shoot = False
         pc.pending_jump = False
-        pc.velocity_y = 0
         pc.is_grounded = True
         pc.self.reset_mock()
         pc.engine.reset_mock()
         pc.self.get_intent.return_value = 0  # default: no movement
+        pc.self.get_velocity.return_value = 0  # default: at rest vertically
 
     def test_initial_state(self):
-        """Player starts grounded, not moving."""
-        self.assertEqual(pc.velocity_y, 0)
+        """Player starts grounded, facing right."""
         self.assertTrue(pc.is_grounded)
         self.assertEqual(pc.facing_x, 1.0)
 
-    def test_gravity_applied_when_airborne(self):
-        """Gravity increases velocity_y each frame while airborne."""
-        pc.is_grounded = False
-        pc.velocity_y = 0
-        pc.update(0.016)  # ~60 FPS frame
-        expected_vy = pc.GRAVITY * 0.016
-        self.assertAlmostEqual(pc.velocity_y, expected_vy, places=2)
-
-    def test_velocity_clamped_while_grounded(self):
-        """While grounded, velocity_y does not accumulate downward each frame."""
-        pc.is_grounded = True
-        pc.velocity_y = 0
-        for _ in range(10):
-            pc.update(0.016)
-        self.assertEqual(pc.velocity_y, 0)
+    def test_vertical_velocity_left_untouched(self):
+        """update() reads current vertical velocity and passes it through unchanged (Box2D
+        integrates gravity for dynamic bodies on its own -- the script must not fight it)."""
+        pc.self.get_velocity.return_value = 123.4
+        pc.update(0.016)
+        pc.self.set_velocity.assert_called_once()
+        call_args = pc.self.set_velocity.call_args[0]
+        self.assertEqual(call_args[1], 123.4)
 
     def test_ground_detection_via_begin_contact(self):
         """BeginContact between player and ground sets is_grounded."""
@@ -90,25 +82,19 @@ class TestPlayerController(unittest.TestCase):
         self.assertFalse(pc.is_grounded)
 
     def test_jump_when_grounded(self):
-        """Jump applies impulse when grounded."""
+        """Jump applies an upward impulse when grounded."""
         pc.is_grounded = True
         pc.pending_jump = True
         pc.update(0.016)
-        # After the jump impulse, gravity still integrates the same frame.
-        expected_vy = -pc.JUMP_FORCE + pc.GRAVITY * 0.016
-        self.assertAlmostEqual(pc.velocity_y, expected_vy, places=1)
-        self.assertFalse(pc.is_grounded)
+        pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
         self.assertFalse(pc.pending_jump)
 
-    def test_jump_when_airborne(self):
-        """Jump when airborne is queued until grounded."""
+    def test_jump_when_airborne_is_queued(self):
+        """Jump when airborne is queued (not applied) until grounded."""
         pc.is_grounded = False
-        pc.velocity_y = -200
         pc.pending_jump = True
         pc.update(0.016)
-        # Velocity should increase (less negative) due to gravity, not reset
-        self.assertNotEqual(pc.velocity_y, -pc.JUMP_FORCE)
-        # Jump is not applied, but pending_jump stays True until grounded
+        pc.self.apply_linear_impulse_to_center.assert_not_called()
         self.assertTrue(pc.pending_jump)
 
     def test_event_attack_requested(self):
@@ -169,31 +155,32 @@ class TestPlayerController(unittest.TestCase):
             {"dir_x": -1.0, "dir_y": 0}
         )
 
-    def test_full_jump_arc(self):
-        """Simulate jump arc: grounded -> jump -> airborne -> land (via BeginContact)."""
+    def test_full_jump_sequence(self):
+        """Simulate: grounded -> jump requested -> impulse applied -> airborne (EndContact) ->
+        landing (BeginContact) -> jump allowed again."""
         pc.is_grounded = True
-        pc.pending_jump = True
-
-        # Frame 1: jump applied
+        pc.on_event("JumpRequested", {})
         pc.update(0.016)
-        expected_vy = -pc.JUMP_FORCE + pc.GRAVITY * 0.016
-        self.assertAlmostEqual(pc.velocity_y, expected_vy, places=1)
+        pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
+
+        # Box2D reports the body leaving the ground shortly after the impulse.
+        pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertFalse(pc.is_grounded)
 
-        # Frames 2-35: ascending then descending (peak is ~frame 31-32)
-        for _ in range(2, 36):
-            pc.update(0.016)
-
-        # By frame 35, should be falling (velocity_y > 0)
-        self.assertGreater(pc.velocity_y, 0, f"Should be falling by frame 35, but vy={pc.velocity_y}")
-
-        # Simulate landing: the engine reports contact once the body reaches the ground.
-        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
-        self.assertTrue(pc.is_grounded, "Should be grounded after impact")
-
-        # Next update should clamp velocity_y back to 0 instead of continuing to fall.
+        # A second jump request while airborne must not apply another impulse.
+        pc.self.apply_linear_impulse_to_center.reset_mock()
+        pc.on_event("JumpRequested", {})
         pc.update(0.016)
-        self.assertEqual(pc.velocity_y, 0)
+        pc.self.apply_linear_impulse_to_center.assert_not_called()
+
+        # Landing is reported once the body touches the ground again.
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
+        self.assertTrue(pc.is_grounded)
+
+        # Now a jump is allowed again.
+        pc.on_event("JumpRequested", {})
+        pc.update(0.016)
+        pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
 
 
 if __name__ == "__main__":

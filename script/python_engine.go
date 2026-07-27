@@ -262,6 +262,49 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 			return py.None, nil
 		}, 0, "set_velocity(vx, vy) -- set the physics body linear velocity")
 
+	m.Globals["get_velocity"] = py.MustNewMethod("get_velocity",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "get_velocity() requires 1 argument")
+			}
+			axis, err := pyToString(args[0])
+			if err != nil {
+				return nil, err
+			}
+			pb := go_.PhysicsBody()
+			if pb == nil || pb.Body == nil {
+				return py.Float(0), nil
+			}
+			v := pb.Body.GetLinearVelocity()
+			switch axis {
+			case "x":
+				return py.Float(v.X), nil
+			case "y":
+				return py.Float(v.Y), nil
+			default:
+				return py.Float(0), nil
+			}
+		}, 0, "get_velocity(axis) -> float -- read the physics body linear velocity; axis: 'x' or 'y'")
+
+	m.Globals["apply_linear_impulse_to_center"] = py.MustNewMethod("apply_linear_impulse_to_center",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 2 {
+				return nil, py.ExceptionNewf(py.TypeError, "apply_linear_impulse_to_center() requires 2 arguments")
+			}
+			ix, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			iy, err := pyToFloat64(args[1])
+			if err != nil {
+				return nil, err
+			}
+			if pb := go_.PhysicsBody(); pb != nil && pb.Body != nil {
+				pb.Body.ApplyLinearImpulseToCenter(physics.Vec2{X: ix, Y: iy})
+			}
+			return py.None, nil
+		}, 0, "apply_linear_impulse_to_center(ix, iy) -- apply an instant velocity change (game units/s) at the body center, for dynamic bodies (e.g. a jump)")
+
 	m.Globals["play_animation"] = py.MustNewMethod("play_animation",
 		func(_ py.Object, args py.Tuple) (py.Object, error) {
 			if len(args) < 1 {

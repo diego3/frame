@@ -9,18 +9,19 @@ import "goengine/physics"
 // OffsetX, OffsetY shift the body relative to the sprite.
 // Restitution: 0 = no bounce, 1 = full bounce. Friction: 0+ (e.g. 0.2–0.5).
 type PhysicsBody struct {
-	Body        physics.Body
-	BodyType    physics.BodyType
-	Shape       physics.ShapeKind
-	Width       float64
-	Height      float64
-	Radius      float64
-	OffsetX     float64
-	OffsetY     float64
-	Density     float64
-	Mass        float64
-	Restitution float64
-	Friction    float64
+	Body          physics.Body
+	BodyType      physics.BodyType
+	Shape         physics.ShapeKind
+	Width         float64
+	Height        float64
+	Radius        float64
+	OffsetX       float64
+	OffsetY       float64
+	Density       float64
+	Mass          float64
+	Restitution   float64
+	Friction      float64
+	FixedRotation bool // dynamic bodies only: prevents tipping over from collision torque
 }
 
 // Type implements Component.
