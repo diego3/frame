@@ -34,7 +34,7 @@ objects:
         mass: 10
       - type: intent_buffer
       - type: script
-        path: "scripts/player_controller.py"
+        path: "scripts/python/player_controller.py"
   - name: enemy_1
     components:
       - type: transform
@@ -52,7 +52,7 @@ objects:
         height: 80
         mass: 10
       - type: script
-        path: "scripts/enemy_walk.py"
+        path: "scripts/python/enemy_walk.py"
       - type: enemy
         hp: 1
   - name: ground

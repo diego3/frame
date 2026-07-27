@@ -42,7 +42,7 @@ objects:
         mass: 10
       - type: intent_buffer
       - type: script
-        path: "scripts/player_controller.lua"
+        path: "scripts/lua/player_controller.lua"
   - name: enemy_1
     components:
       - type: transform
@@ -60,7 +60,7 @@ objects:
         height: 80
         mass: 10
       - type: script
-        path: "scripts/enemy_walk.lua"
+        path: "scripts/lua/enemy_walk.lua"
         # update_func must differ from player_controller.lua's "update" — LuaEngine runs all
         # scripts in one shared global VM state, so two scripts both defining a global "update"
         # would silently clobber each other. See enemy_walk.lua's own header comment.
