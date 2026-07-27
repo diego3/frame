@@ -170,7 +170,7 @@ objects:
         damage: 1
         speed: 360
         spawn_clearance: 5
-        despawn_margin: 32
+        despawn_margin: 20
 
   # Invisible entity (no block/ball/physics_body -- nothing to draw or collide) that hosts this
   # demo's game-rule script. Anything that decides *when*/*what*/*with what parameters* to spawn
@@ -309,10 +309,10 @@ objects:
     components:
       - type: transform
         x: 2050
-        y: 380
+        y: 80
       - type: block
         width: 60
-        height: 80
+        height: 380
         color_r: 120
         color_g: 100
         color_b: 60
@@ -339,6 +339,64 @@ objects:
         color_b: 90
       - type: physics_body
         body_type: static
+
+  # Stationary "bomber" enemy standing on platform_1, lobbing sphere_prototype bombs at the player
+  # in a parabolic arc -- see enemy_bomber.py for the aim/throw rule (Python, per this project's
+  # scripting convention) and MainMenu.spawnEntity's "vel_x"/"vel_y" payload keys for the generic
+  # engine mechanism that actually launches the clone. Reuses the exact same bomb/explosion chain
+  # already wired up for the falling-sphere hazard (sphere_timer.py/explosion_effect.py) -- only
+  # the throw itself (who fires, when, aimed where) is new.
+  # Sprite: first 5 frames of Enemies/RPGmob.png (44x44/frame; frames 5-9 are a death animation,
+  # not used here), pre-sliced into anim_rpg_attack.png the same way the player's frames were
+  # sliced out of a shared master sheet (object.Spritesheet can't window a sub-region on its own).
+  # "idle" reuses that same 5-frame strip but pinned to frame_index 0 with fps: 0 (static, no
+  # auto-advance -- see object.Spritesheet.Update) so it's just the resting aim pose; "attack" plays
+  # the full 5-frame strip once (loop: false) -- enemy_bomber.py switches to it only for the
+  # duration of a shot (see self.play_animation/self.animation_finished there), same
+  # idle/run/jump-style animator pattern as the player.
+  # scale_x/y 1.6 (44 -> ~70px) roughly matches the player/enemy_1 character heights on screen.
+  # scale_x's sign is flipped at runtime by enemy_bomber.py (self.set_facing) to face the player;
+  # positive (as set here) is this sprite's natural facing direction, matching set_facing's
+  # preserve-magnitude/flip-sign convention (see player_controller.py).
+  # physics_body has no "block" sibling, so it's sized/offset to approximate the sprite's opaque
+  # footprint for aabb() (view/scene/mainmenu.go), the same convention as the player's hitbox.
+  - name: enemy_bomber
+    components:
+      - type: transform
+        x: 325
+        y: 355
+        scale_x: 1.6
+        scale_y: 1.6
+      - type: spritesheet
+        name: idle
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Enemies/anim_rpg_attack.png"
+        frame_width: 44
+        frame_height: 44
+        cols: 5
+        rows: 1
+        frame_index: 0
+        fps: 0
+      - type: spritesheet
+        name: attack
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Enemies/anim_rpg_attack.png"
+        frame_width: 44
+        frame_height: 44
+        cols: 5
+        rows: 1
+        fps: 10
+        loop: false
+      - type: animator
+        current: idle
+      - type: physics_body
+        body_type: static
+        width: 45
+        height: 55
+        offset_x: 13
+        offset_y: 15
+      - type: enemy
+        hp: 1
+      - type: script
+        path: "scripts/python/enemy_bomber.py"
   - name: platform_2
     components:
       - type: transform
@@ -394,9 +452,9 @@ objects:
       - type: transform
       - type: ball
         radius: 15
-        color_r: 230
-        color_g: 120
-        color_b: 40
+        color_r: 0
+        color_g: 0
+        color_b: 0
       - type: physics_body
         body_type: dynamic
         shape: circle
@@ -408,3 +466,30 @@ objects:
         seconds: 4
       - type: script
         path: "scripts/python/sphere_timer.py"
+
+  # Explosion VFX prototype: spawned by sphere_timer.py (via engine.emit("SpawnEntity", ...), the
+  # same generic mechanism game_manager.py uses to spawn spheres) at the exact moment a sphere's
+  # fuse runs out, then self-destroys once its one-shot animation finishes (see
+  # explosion_effect.py). Kept as its own GameObject rather than swapping the sphere's own visual
+  # component, since object.Manager has no "hide this component but keep others" concept -- a
+  # fresh entity with a single Drawer component (this spritesheet) sidesteps that entirely: no
+  # Animator needed here since there is nothing else on this object competing to be drawn (see
+  # object.Manager.Draw: with no Animator present, every Drawer component draws, and there is only
+  # one). tint_r/g/b force the sheet's original fire-orange art to a black silhouette per art
+  # direction; frames come from Explosion_Particle.png, a 9-frame 32x32-per-frame strip.
+  - name: explosion_prototype
+    prototype: true
+    components:
+      - type: transform
+      - type: spritesheet
+        image: "assets/vacaroxa--generic-run-n-gun-pack--v.1.0/Enemies/Explosion_Particle.png"
+        frame_width: 32
+        frame_height: 32
+        cols: 10
+        rows: 1
+        fps: 16
+        loop: false
+      - type: timer
+        seconds: 1
+      - type: script
+        path: "scripts/python/explosion_effect.py"

@@ -28,12 +28,13 @@ type Engine interface {
 	DoString(path, src string) error
 
 	// RegisterEngineAPI registers Go callbacks so scripts can call engine.play_sound,
-	// engine.switch_scene, engine.quit, and engine.emit.
+	// engine.switch_scene, engine.quit, engine.emit, and engine.get_entity_position.
 	RegisterEngineAPI(
 		playSound func(path string),
 		switchScene func(sceneID string),
 		quit func(),
 		emit func(name string, payload map[string]interface{}),
+		getEntityPosition func(name, axis string) (float64, bool),
 	)
 
 	// CallScriptUpdate sets the entity context (self) for go_ and calls the named

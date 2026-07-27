@@ -122,7 +122,24 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 	emit := func(name string, payload map[string]interface{}) {
 		bus.Emit(events.ScriptEmitted{Name: name, Payload: payload})
 	}
-	m.engine.RegisterEngineAPI(playSound, switchScene, quit, emit)
+	getEntityPosition := func(name, axis string) (float64, bool) {
+		if m.world == nil {
+			return 0, false
+		}
+		obj := m.world.Find(name)
+		if obj == nil || !obj.Active {
+			return 0, false
+		}
+		t := obj.Transform()
+		if t == nil {
+			return 0, false
+		}
+		if axis == "y" {
+			return t.Y, true
+		}
+		return t.X, true
+	}
+	m.engine.RegisterEngineAPI(playSound, switchScene, quit, emit, getEntityPosition)
 
 	a := &cfg.Assets
 	if err := loader.LoadFont(a.FontPath); err != nil {
@@ -331,6 +348,9 @@ func (m *MainMenu) updateProjectiles(dt float64) {
 //	                prototype name + a counter if omitted
 //	"x", "y"        (number, optional) Transform position override
 //	"timer_seconds" (number, optional) overrides a cloned Timer component's Remaining, if present
+//	"vel_x", "vel_y" (number, optional) initial linear velocity set on the clone's physics body
+//	                (e.g. a lobbed-in-a-parabola bomb), applied once the body is created below;
+//	                no-op if the prototype has no physics_body
 func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
 	if m.world == nil {
 		return
@@ -370,6 +390,15 @@ func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
 		// Safe to call repeatedly: InitFromWorld only creates bodies for objects whose
 		// PhysicsBody.Body is still nil, so this only ever creates the one new clone's body.
 		m.physicsSystem.InitFromWorld(m.world)
+	}
+	_, hasVelX := payload["vel_x"]
+	_, hasVelY := payload["vel_y"]
+	if hasVelX || hasVelY {
+		if pb := clone.PhysicsBody(); pb != nil && pb.Body != nil {
+			vx := payloadFloat(payload, "vel_x", 0)
+			vy := payloadFloat(payload, "vel_y", 0)
+			pb.Body.SetLinearVelocity(physics.Vec2{X: vx, Y: vy})
+		}
 	}
 }
 
