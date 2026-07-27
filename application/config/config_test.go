@@ -23,7 +23,7 @@ func TestDefault(t *testing.T) {
 	assert.Equal(t, "scenes/main_menu.yaml", cfg.Assets.ScenePath)
 	assert.Equal(t, float64(400), cfg.Physics.GravityY)
 	assert.Equal(t, float64(64), cfg.Physics.PixelScale)
-	assert.Equal(t, map[string]string{"main_menu": "main_menu"}, cfg.Scenes)
+	assert.Equal(t, map[string]string{"main_menu": "world_scene"}, cfg.Scenes)
 	assert.Equal(t, "main_menu", cfg.InitialScene)
 }
 
@@ -63,8 +63,8 @@ assets:
   font_path: "assets/custom.ttf"
   scene_path: "scenes/level1.yaml"
 scenes:
-  main_menu: main_menu
-  level1: main_menu
+  main_menu: world_scene
+  level1: metalslug_scene
 initial_scene: level1
 `)
 
@@ -76,7 +76,7 @@ initial_scene: level1
 	assert.Equal(t, "Custom", cfg.Window.Title)
 	assert.Equal(t, "assets/custom.ttf", cfg.Assets.FontPath)
 	assert.Equal(t, "scenes/level1.yaml", cfg.Assets.ScenePath)
-	assert.Equal(t, map[string]string{"main_menu": "main_menu", "level1": "main_menu"}, cfg.Scenes)
+	assert.Equal(t, map[string]string{"main_menu": "world_scene", "level1": "metalslug_scene"}, cfg.Scenes)
 	assert.Equal(t, "level1", cfg.InitialScene)
 }
 
@@ -130,7 +130,7 @@ func TestLoad_defaultsZeroOrMissingFields(t *testing.T) {
 			name: "missing scenes falls back to default main_menu entry",
 			yaml: "window: {width: 800}",
 			check: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, map[string]string{"main_menu": "main_menu"}, cfg.Scenes)
+				assert.Equal(t, map[string]string{"main_menu": "world_scene"}, cfg.Scenes)
 			},
 		},
 		{

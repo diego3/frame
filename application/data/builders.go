@@ -294,7 +294,8 @@ func buildEnemy(params map[string]interface{}, _ ports.ImageLoader) (object.Comp
 
 // buildTimer builds a Timer component. "seconds" is typically left at a placeholder on a
 // prototype (e.g. "sphere_prototype") and overwritten by whatever spawns the clone (see
-// MainMenu.updateSphereSpawner), same convention as buildProjectile.
+// scene.WorldScene's spawnEntity handling of the "timer_seconds" payload key), same convention as
+// buildProjectile.
 func buildTimer(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	seconds, _ := floatParam(params, "seconds")
 	return &object.Timer{Remaining: seconds}, nil

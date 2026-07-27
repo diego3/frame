@@ -53,5 +53,5 @@ script_events:
 # Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
 # Omit both to fall back to the engine default (a single "main_menu" scene).
 scenes:
-  main_menu: main_menu
+  main_menu: world_scene
 initial_scene: main_menu

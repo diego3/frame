@@ -1,7 +1,8 @@
 package object
 
-// Projectile marks a GameObject as a projectile and carries the data MainMenu's
-// spawnProjectile/updateProjectiles (view/scene/mainmenu.go) consume. Pair with a Transform
+// Projectile marks a GameObject as a projectile and carries the data a game's own spawn logic
+// (e.g. games/metalslug_demo/scene.go's spawnProjectile) and scene.WorldScene.updateProjectiles
+// (view/scene/world_scene.go) consume. Pair with a Transform
 // (position) and a visual component (e.g. Block) on the same GameObject.
 //
 // On a "*_prototype" GameObject (see GameObject.Clone), Speed/SpawnClearance/DespawnMargin are

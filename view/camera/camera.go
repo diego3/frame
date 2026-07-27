@@ -1,6 +1,6 @@
 // Package camera provides a simple 2D follow camera: a world-space offset clamped to level
 // bounds so the viewport never shows space outside the level. It has no rendering dependency —
-// callers translate their draw target by (X, Y) themselves (see view/scene.MainMenu.Draw).
+// callers translate their draw target by (X, Y) themselves (see view/scene.WorldScene.Draw).
 package camera
 
 // Camera holds a world-space top-left offset for the visible viewport, plus the viewport and

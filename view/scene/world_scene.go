@@ -23,16 +23,21 @@ import (
 	"goengine/view/ui"
 )
 
-// MainMenuState holds only simulation data for the main menu. Logic updates it in Update(dt) from intent events;
-// View (Draw) only reads it to present. No rendering or input types.
-type MainMenuState struct {
+// WorldSceneState holds only simulation data for a WorldScene. Logic updates it in Update(dt) from
+// intent events; View (Draw) only reads it to present. No rendering or input types.
+type WorldSceneState struct {
 	World            *object.Manager
 	DebugDrawPhysics bool
 }
 
-// MainMenu is the initial scene (title + click me button + data-driven GameObject world).
+// WorldScene is the engine's generic, data-driven scene type (title + click me button + a
+// data-driven GameObject world, scripting, physics, and an optional follow camera). It has no
+// knowledge of any specific game's rules — a game that needs its own gameplay logic (hit
+// detection, custom spawn conventions, ...) embeds *WorldScene in its own ports.Scene
+// implementation instead of adding that logic here (see games/metalslug_demo's Scene, and
+// docs/frame_engine_migration_plan.md's "blocking design problem" for why this split exists).
 // Logic (Update) runs script components (shared engine per scene), then physics, then world update.
-type MainMenu struct {
+type WorldScene struct {
 	titleImg         *ebiten.Image
 	uiFace           font.Face
 	world            *object.Manager
@@ -50,23 +55,23 @@ type MainMenu struct {
 	spawnCount       int // fallback unique-name counter for spawnEntity when payload omits "name"
 }
 
-// NewMainMenu returns a new main menu scene.
-func NewMainMenu() *MainMenu {
-	return &MainMenu{}
+// NewWorldScene returns a new, empty WorldScene.
+func NewWorldScene() *WorldScene {
+	return &WorldScene{}
 }
 
 // Setup loads assets and builds the UI. Implements ports.Scene.
 // If config has scene_path set, the world is built from that YAML; otherwise an empty world is used.
 // ctx.Bus is used to emit intents (e.g. SceneChangeRequested) and to subscribe to events (e.g. DebugOverlayToggled).
 // The script engine backend (Lua or Python) is selected from cfg.ScriptEngine.
-func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
+func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	cfg, loader, root, bus := ctx.Config, ctx.Loader, ctx.UI, ctx.Bus
 
 	event.Subscribe(bus, func(ev events.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
 	})
 	event.Subscribe(bus, func(ev events.MoveRequested) {
-		if controlled := m.findControlled(); controlled != nil {
+		if controlled := m.FindControlled(); controlled != nil {
 			if c := controlled.GetComponent("intent_buffer"); c != nil {
 				ib := c.(*object.IntentBuffer)
 				ib.PendingMoveX, ib.PendingMoveY = ev.DirX, ev.DirY
@@ -74,9 +79,6 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 		}
 	})
 	event.Subscribe(bus, func(ev events.ScriptEmitted) {
-		if ev.Name == "SpawnProjectile" {
-			m.spawnProjectile(ev.Payload)
-		}
 		if ev.Name == "SpawnEntity" {
 			m.spawnEntity(ev.Payload)
 		}
@@ -223,10 +225,16 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 	return nil
 }
 
-// findControlled returns the first active GameObject with an intent_buffer component — the single
+// World returns the scene's GameObject world, or nil before Setup runs. Exported so a game's own
+// ports.Scene implementation (embedding *WorldScene) can add its own gameplay rules on top.
+func (m *WorldScene) World() *object.Manager {
+	return m.world
+}
+
+// FindControlled returns the first active GameObject with an intent_buffer component — the single
 // player-controlled entity a scene is expected to have (e.g. "knight" in demo1, "player" in
 // metalslug_demo). Not name-specific, so scenes are free to name their controlled entity anything.
-func (m *MainMenu) findControlled() *object.GameObject {
+func (m *WorldScene) FindControlled() *object.GameObject {
 	if m.world == nil {
 		return nil
 	}
@@ -238,77 +246,15 @@ func (m *MainMenu) findControlled() *object.GameObject {
 	return nil
 }
 
-// spawnProjectile clones the scene's "projectile_prototype" GameObject (a Prototype-pattern
-// template: an inert GameObject marked IsPrototype, defined in the scene YAML like any other
-// object, never itself run or drawn — see object.GameObject.Clone and Manager.Update/Draw), then
-// repositions and aims the clone at the controlled entity's center, offset in the facing direction
-// given by payload's "dir_x"/"dir_y" (defaults to facing right). If the scene has no
-// "projectile_prototype", shooting is a silent no-op — a scene that never wires up shooting
-// doesn't need one.
-//
-// Speed/Damage/SpawnClearance/DespawnMargin all come from the prototype's own Projectile
-// component (YAML-configurable, see object.Projectile) rather than being hardcoded here, and the
-// spawn offset is computed from the *shooter's* own PhysicsBody size (half-extent along whichever
-// axis the shot fires on) plus that clearance — not a single fixed distance — so the projectile
-// spawns clear of the shooter's body regardless of how big or small that shooter is.
-func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
-	if m.world == nil {
-		return
-	}
-	proto := m.world.Find("projectile_prototype")
-	if proto == nil || !proto.IsPrototype {
-		return
-	}
-	origin := m.findControlled()
-	if origin == nil {
-		return
-	}
-	t := origin.Transform()
-	if t == nil {
-		return
-	}
-	cx, cy := t.X, t.Y
-	originHalfWidth, originHalfHeight := 0.0, 0.0
-	if pb := origin.PhysicsBody(); pb != nil {
-		cx += pb.Width / 2
-		cy += pb.Height / 2
-		originHalfWidth, originHalfHeight = pb.Width/2, pb.Height/2
-	}
-
-	dirX, dirY := normalizeDir(payloadFloat(payload, "dir_x", 1), payloadFloat(payload, "dir_y", 0))
-
-	proj := proto.Clone("projectile")
-
-	originHalfExtent := originHalfWidth
-	if math.Abs(dirY) > math.Abs(dirX) {
-		originHalfExtent = originHalfHeight
-	}
-	spawnOffset := originHalfExtent
-	if p, ok := proj.GetComponent("projectile").(*object.Projectile); ok {
-		spawnOffset += p.SpawnClearance
-		p.VelX, p.VelY = dirX*p.Speed, dirY*p.Speed
-	}
-
-	// Center the projectile on the spawn point using its own visual size (Block), if present.
-	halfW, halfH := 0.0, 0.0
-	if blk, ok := proj.GetComponent("block").(*object.Block); ok {
-		halfW, halfH = blk.Width/2, blk.Height/2
-	}
-	proj.Transform().X = cx + dirX*spawnOffset - halfW
-	proj.Transform().Y = cy + dirY*spawnOffset - halfH
-
-	m.world.Add(proj)
-}
-
 // updateProjectiles moves each active projectile's Transform by its velocity, then deactivates it
 // once it leaves the level bounds (by more than its own configurable DespawnMargin -- see
 // object.Projectile). This isn't Projectile.Update(dt) because Updater components don't receive
 // their sibling Transform (see object.Updater) — moving a projectile needs both, the same reason
-// updateScripts and PhysicsSystem.SyncToWorld are also MainMenu-level steps rather than generic
+// updateScripts and PhysicsSystem.SyncToWorld are also WorldScene-level steps rather than generic
 // per-component Update calls. Uses level bounds (m.levelWidth/levelHeight), not the camera
 // viewport — projectile lifetime is a Logic concern, independent of what the View currently has
 // on screen.
-func (m *MainMenu) updateProjectiles(dt float64) {
+func (m *WorldScene) updateProjectiles(dt float64) {
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active || go_.IsPrototype {
 			continue
@@ -331,15 +277,14 @@ func (m *MainMenu) updateProjectiles(dt float64) {
 	}
 }
 
-// spawnEntity clones a named prototype GameObject (Prototype pattern, the same mechanism
-// spawnProjectile already uses) at the position given in payload, and registers a physics body
-// for it if it has one. Triggered by a script calling engine.emit("SpawnEntity", {...}) -- this
-// is deliberately the *only* thing MainMenu knows how to do generically: deciding when, what, and
-// with what parameters to spawn is a game-rule concern that belongs in a script (e.g.
-// games/metalslug_demo/scripts/python/game_manager.py, which periodically spawns
-// "sphere_prototype" as a falling-hazard rule specific to this demo), not in this scene type,
-// which is also used by other, unrelated games/scenes. Silently does nothing if "prototype" is
-// missing/unknown, same convention as spawnProjectile.
+// spawnEntity clones a named prototype GameObject (the Prototype pattern) at the position given
+// in payload, and registers a physics body for it if it has one. Triggered by a script calling
+// engine.emit("SpawnEntity", {...}) -- this is deliberately the *only* thing WorldScene knows how
+// to do generically: deciding when, what, and with what parameters to spawn is a game-rule
+// concern that belongs in a script (e.g. games/metalslug_demo/scripts/python/game_manager.py,
+// which periodically spawns "sphere_prototype" as a falling-hazard rule specific to that demo),
+// not in this scene type, which is also used by other, unrelated games/scenes. Silently does
+// nothing if "prototype" is missing/unknown.
 //
 // Recognized payload keys:
 //
@@ -351,7 +296,7 @@ func (m *MainMenu) updateProjectiles(dt float64) {
 //	"vel_x", "vel_y" (number, optional) initial linear velocity set on the clone's physics body
 //	                (e.g. a lobbed-in-a-parabola bomb), applied once the body is created below;
 //	                no-op if the prototype has no physics_body
-func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
+func (m *WorldScene) spawnEntity(payload map[string]interface{}) {
 	if m.world == nil {
 		return
 	}
@@ -373,15 +318,15 @@ func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
 	clone := proto.Clone(name)
 	if t := clone.Transform(); t != nil {
 		if _, ok := payload["x"]; ok {
-			t.X = payloadFloat(payload, "x", t.X)
+			t.X = PayloadFloat(payload, "x", t.X)
 		}
 		if _, ok := payload["y"]; ok {
-			t.Y = payloadFloat(payload, "y", t.Y)
+			t.Y = PayloadFloat(payload, "y", t.Y)
 		}
 	}
 	if _, ok := payload["timer_seconds"]; ok {
 		if timer, ok := clone.GetComponent("timer").(*object.Timer); ok {
-			timer.Remaining = payloadFloat(payload, "timer_seconds", timer.Remaining)
+			timer.Remaining = PayloadFloat(payload, "timer_seconds", timer.Remaining)
 		}
 	}
 
@@ -395,59 +340,18 @@ func (m *MainMenu) spawnEntity(payload map[string]interface{}) {
 	_, hasVelY := payload["vel_y"]
 	if hasVelX || hasVelY {
 		if pb := clone.PhysicsBody(); pb != nil && pb.Body != nil {
-			vx := payloadFloat(payload, "vel_x", 0)
-			vy := payloadFloat(payload, "vel_y", 0)
+			vx := PayloadFloat(payload, "vel_x", 0)
+			vy := PayloadFloat(payload, "vel_y", 0)
 			pb.Body.SetLinearVelocity(physics.Vec2{X: vx, Y: vy})
 		}
 	}
 }
 
-// updateHitDetection checks every active projectile against every active enemy for an AABB
-// (axis-aligned bounding box) overlap — a plain rectangle intersection, not a Box2D contact. This
-// is the build plan's explicit recommendation for step 5: start with the simplest possible check
-// and only reach for real physics contacts (or a spatial partition, if the naive O(projectiles ×
-// enemies) loop ever shows up in profiling) if AABB proves insufficient — see
-// docs/game_concept_metal_slug_demo.md. On a hit: the projectile is consumed (deactivated) and the
-// enemy takes Projectile.Damage, dying (deactivated) at HP <= 0.
-func (m *MainMenu) updateHitDetection() {
-	for _, projGo := range m.world.Objects() {
-		if !projGo.Active || projGo.IsPrototype {
-			continue
-		}
-		proj, ok := projGo.GetComponent("projectile").(*object.Projectile)
-		if !ok {
-			continue
-		}
-		px, py, pw, ph, ok := aabb(projGo)
-		if !ok {
-			continue
-		}
-		for _, enemyGo := range m.world.Objects() {
-			if !enemyGo.Active || enemyGo.IsPrototype {
-				continue
-			}
-			enemy, ok := enemyGo.GetComponent("enemy").(*object.Enemy)
-			if !ok {
-				continue
-			}
-			ex, ey, ew, eh, ok := aabb(enemyGo)
-			if !ok || !aabbOverlap(px, py, pw, ph, ex, ey, ew, eh) {
-				continue
-			}
-			projGo.Active = false
-			enemy.HP -= proj.Damage
-			if enemy.HP <= 0 {
-				enemyGo.Active = false
-			}
-			break // this projectile is consumed; stop checking it against other enemies
-		}
-	}
-}
-
-// aabb returns the world-space bounding box (x, y, w, h) for go_, using its Block size if present
-// (both the projectile and this demo's enemy/player placeholders are Blocks), falling back to its
-// PhysicsBody size. ok is false if go_ has no Transform or no usable size.
-func aabb(go_ *object.GameObject) (x, y, w, h float64, ok bool) {
+// AABB returns the world-space bounding box (x, y, w, h) for go_, using its Block size if present
+// (both a projectile and this engine's Block placeholders are Blocks), falling back to its
+// PhysicsBody size. ok is false if go_ has no Transform or no usable size. Exported so a game's
+// own gameplay rules (e.g. hit detection) can reuse this instead of re-deriving bounding boxes.
+func AABB(go_ *object.GameObject) (x, y, w, h float64, ok bool) {
 	t := go_.Transform()
 	if t == nil {
 		return 0, 0, 0, 0, false
@@ -461,15 +365,15 @@ func aabb(go_ *object.GameObject) (x, y, w, h float64, ok bool) {
 	return 0, 0, 0, 0, false
 }
 
-// aabbOverlap reports whether two axis-aligned rectangles (top-left x/y, width w, height h) intersect.
-func aabbOverlap(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
+// AABBOverlap reports whether two axis-aligned rectangles (top-left x/y, width w, height h) intersect.
+func AABBOverlap(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
 	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
 }
 
-// payloadFloat reads key from payload as a float64, accepting whatever numeric type the script
+// PayloadFloat reads key from payload as a float64, accepting whatever numeric type the script
 // engine produced (Lua and Python payload numbers may arrive as float64, int, or int64), or
 // fallback if key is absent or not a number.
-func payloadFloat(payload map[string]interface{}, key string, fallback float64) float64 {
+func PayloadFloat(payload map[string]interface{}, key string, fallback float64) float64 {
 	switch v := payload[key].(type) {
 	case float64:
 		return v
@@ -481,8 +385,8 @@ func payloadFloat(payload map[string]interface{}, key string, fallback float64) 
 	return fallback
 }
 
-// normalizeDir returns (x, y) scaled to unit length, or (1, 0) if both are zero.
-func normalizeDir(x, y float64) (float64, float64) {
+// NormalizeDir returns (x, y) scaled to unit length, or (1, 0) if both are zero.
+func NormalizeDir(x, y float64) (float64, float64) {
 	length := math.Sqrt(x*x + y*y)
 	if length == 0 {
 		return 1, 0
@@ -493,7 +397,7 @@ func normalizeDir(x, y float64) (float64, float64) {
 // cameraTargetCenter returns the world-space center of the camera's follow target, and whether it
 // was found. Center is the transform position plus half the physics body size when present,
 // falling back to the raw transform position (top-left) otherwise.
-func (m *MainMenu) cameraTargetCenter() (x, y float64, ok bool) {
+func (m *WorldScene) cameraTargetCenter() (x, y float64, ok bool) {
 	if m.world == nil || m.camTarget == "" {
 		return 0, 0, false
 	}
@@ -520,7 +424,7 @@ func (m *MainMenu) cameraTargetCenter() (x, y float64, ok bool) {
 // updateScripts and before the physics step, so a body that a script just destroyed is never
 // simulated for one extra frame. See PhysicsSystem.DestroyBody for why Active=false alone isn't
 // enough for a dynamic body.
-func (m *MainMenu) destroyDeactivatedPhysicsBodies() {
+func (m *WorldScene) destroyDeactivatedPhysicsBodies() {
 	for _, obj := range m.world.Objects() {
 		if obj.Active || obj.IsPrototype {
 			continue
@@ -532,7 +436,7 @@ func (m *MainMenu) destroyDeactivatedPhysicsBodies() {
 }
 
 // Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
-func (m *MainMenu) Update(dt float64) {
+func (m *WorldScene) Update(dt float64) {
 	if m.world == nil || m.engine == nil {
 		return
 	}
@@ -544,7 +448,6 @@ func (m *MainMenu) Update(dt float64) {
 	}
 	m.world.Update(dt)
 	m.updateProjectiles(dt)
-	m.updateHitDetection()
 	if m.cam != nil {
 		if cx, cy, ok := m.cameraTargetCenter(); ok {
 			m.cam.Follow(cx, cy)
@@ -554,7 +457,7 @@ func (m *MainMenu) Update(dt float64) {
 
 // updateScripts runs the script engine's update(dt) (or Script.UpdateFuncName) for every active
 // GameObject with a script component, loading each script file (or FS-embedded source) on first use.
-func (m *MainMenu) updateScripts(dt float64) {
+func (m *WorldScene) updateScripts(dt float64) {
 	for _, go_ := range m.world.Objects() {
 		if !go_.Active || go_.IsPrototype {
 			continue
@@ -598,8 +501,8 @@ func (m *MainMenu) updateScripts(dt float64) {
 }
 
 // Draw renders the scene from current state and view assets. Implements ports.Scene.
-// View only reads state (MainMenuState) and does not mutate simulation data.
-func (m *MainMenu) Draw(screen *ebiten.Image) {
+// View only reads state (WorldSceneState) and does not mutate simulation data.
+func (m *WorldScene) Draw(screen *ebiten.Image) {
 	state := m.state()
 	if m.titleImg != nil {
 		op := &ebiten.DrawImageOptions{}
@@ -630,14 +533,14 @@ func (m *MainMenu) Draw(screen *ebiten.Image) {
 }
 
 // state returns the current simulation state for the view to read (Logic updates these fields in Update).
-func (m *MainMenu) state() MainMenuState {
-	return MainMenuState{
+func (m *WorldScene) state() WorldSceneState {
+	return WorldSceneState{
 		World:            m.world,
 		DebugDrawPhysics: m.debugDrawPhysics,
 	}
 }
 
 // UIFace returns the font face for UI labels. Implements ports.Scene.
-func (m *MainMenu) UIFace() font.Face {
+func (m *WorldScene) UIFace() font.Face {
 	return m.uiFace
 }

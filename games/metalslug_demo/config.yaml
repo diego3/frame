@@ -52,5 +52,5 @@ script_events:
 
 # Scenes: scene id -> scene type (looked up in view/scene.Factories). initial_scene is the id loaded first.
 scenes:
-  level1: main_menu
+  level1: metalslug_scene
 initial_scene: level1

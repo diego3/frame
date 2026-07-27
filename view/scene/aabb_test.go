@@ -24,10 +24,10 @@ func TestAabbOverlap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := aabbOverlap(tt.box1[0], tt.box1[1], tt.box1[2], tt.box1[3], tt.box2[0], tt.box2[1], tt.box2[2], tt.box2[3])
+			got := AABBOverlap(tt.box1[0], tt.box1[1], tt.box1[2], tt.box1[3], tt.box2[0], tt.box2[1], tt.box2[2], tt.box2[3])
 			assert.Equal(t, tt.want, got)
 			// Overlap must be symmetric regardless of argument order.
-			gotSwapped := aabbOverlap(tt.box2[0], tt.box2[1], tt.box2[2], tt.box2[3], tt.box1[0], tt.box1[1], tt.box1[2], tt.box1[3])
+			gotSwapped := AABBOverlap(tt.box2[0], tt.box2[1], tt.box2[2], tt.box2[3], tt.box1[0], tt.box1[1], tt.box1[2], tt.box1[3])
 			assert.Equal(t, tt.want, gotSwapped)
 		})
 	}
@@ -36,7 +36,7 @@ func TestAabbOverlap(t *testing.T) {
 func TestAabb(t *testing.T) {
 	t.Run("no transform is not ok", func(t *testing.T) {
 		go_ := object.NewGameObject("no-transform")
-		_, _, _, _, ok := aabb(go_)
+		_, _, _, _, ok := AABB(go_)
 		assert.False(t, ok)
 	})
 
@@ -44,7 +44,7 @@ func TestAabb(t *testing.T) {
 		go_ := object.NewGameObject("blocky")
 		go_.AddComponent(&object.Transform{X: 5, Y: 6})
 		go_.AddComponent(&object.Block{Width: 10, Height: 20})
-		x, y, w, h, ok := aabb(go_)
+		x, y, w, h, ok := AABB(go_)
 		assert.True(t, ok)
 		assert.Equal(t, 5.0, x)
 		assert.Equal(t, 6.0, y)
@@ -56,7 +56,7 @@ func TestAabb(t *testing.T) {
 		go_ := object.NewGameObject("physics-only")
 		go_.AddComponent(&object.Transform{X: 1, Y: 2})
 		go_.AddComponent(&object.PhysicsBody{Width: 30, Height: 40})
-		x, y, w, h, ok := aabb(go_)
+		x, y, w, h, ok := AABB(go_)
 		assert.True(t, ok)
 		assert.Equal(t, 1.0, x)
 		assert.Equal(t, 2.0, y)
@@ -67,7 +67,7 @@ func TestAabb(t *testing.T) {
 	t.Run("no usable size is not ok", func(t *testing.T) {
 		go_ := object.NewGameObject("sizeless")
 		go_.AddComponent(&object.Transform{X: 1, Y: 2})
-		_, _, _, _, ok := aabb(go_)
+		_, _, _, _, ok := AABB(go_)
 		assert.False(t, ok)
 	})
 }

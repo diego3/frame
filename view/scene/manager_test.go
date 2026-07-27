@@ -15,7 +15,7 @@ import (
 )
 
 // fakeScene is a minimal ports.Scene used to observe what Manager.SwitchTo passes to Setup,
-// without depending on a real scene implementation (e.g. MainMenu) or its asset loading.
+// without depending on a real scene implementation (e.g. WorldScene) or its asset loading.
 type fakeScene struct {
 	setupErr   error
 	gotCtx     *ports.SceneContext

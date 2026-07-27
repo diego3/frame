@@ -22,7 +22,7 @@ type Config struct {
 	Input        map[string]any    `yaml:"input"`         // optional: action name -> key name(s), e.g. "dash": "ShiftLeft" or "move_left": ["A", "Left"]
 	ScriptEvents map[string]string `yaml:"script_events"` // optional: input action -> script event name, e.g. "dash": "DashRequested"
 	ScriptEngine string            `yaml:"script_engine"` // scripting backend: "lua" (default) or "python"
-	Scenes       map[string]string `yaml:"scenes"`        // optional: scene id -> scene type (see view/scene.Factories), e.g. "main_menu": "main_menu"
+	Scenes       map[string]string `yaml:"scenes"`        // optional: scene id -> scene type; types are resolved from the sceneFactories map passed to engine.New (the application's own scene types, e.g. "main_menu": "world_scene")
 	InitialScene string            `yaml:"initial_scene"` // optional: scene id to load first; defaults to "main_menu"
 }
 
@@ -88,7 +88,7 @@ func Default() *Config {
 			GravityY:   400,
 			PixelScale: 64,
 		},
-		Scenes:       map[string]string{"main_menu": "main_menu"},
+		Scenes:       map[string]string{"main_menu": "world_scene"},
 		InitialScene: "main_menu",
 	}
 }
@@ -135,7 +135,7 @@ func Load(path string) (*Config, error) {
 		cfg.Physics.PixelScale = 64
 	}
 	if len(cfg.Scenes) == 0 {
-		cfg.Scenes = map[string]string{"main_menu": "main_menu"}
+		cfg.Scenes = map[string]string{"main_menu": "world_scene"}
 	}
 	if cfg.InitialScene == "" {
 		cfg.InitialScene = "main_menu"

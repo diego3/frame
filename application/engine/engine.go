@@ -19,7 +19,11 @@ type Engine struct {
 }
 
 // New builds the dependency graph and returns an Engine. cfg must not be nil.
-func New(cfg *config.Config) *Engine {
+// sceneFactories maps scene type name (as used in cfg's "scenes" map) to a constructor; the
+// engine itself has no built-in scene types — the caller (typically main.go) supplies whichever
+// scene types its game actually needs. This keeps scene registration data-driven and out of the
+// engine's own global state (previously a package-level scene.Factories map).
+func New(cfg *config.Config, sceneFactories map[string]scene.SceneFactory) *Engine {
 	bus := event.NewBus()
 	mgr := resource.NewManager()
 	if cfg.FS != nil {
@@ -28,11 +32,11 @@ func New(cfg *config.Config) *Engine {
 	var loader ports.AssetLoader = mgr
 	u := ui.NewContainer()
 	sm := scene.NewManager()
-	// Scenes are declared in config (id -> type); types are looked up in scene.Factories.
+	// Scenes are declared in config (id -> type); types are looked up in sceneFactories.
 	// Unknown types are skipped here and surface as a clear "unknown scene id" error from
 	// scene.Manager.SwitchTo when Init() tries to load them.
 	for id, sceneType := range cfg.Scenes {
-		if factory, ok := scene.Factories[sceneType]; ok {
+		if factory, ok := sceneFactories[sceneType]; ok {
 			sm.Register(id, factory)
 		}
 	}
