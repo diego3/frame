@@ -31,15 +31,16 @@ func (e *LuaEngine) DoString(path, src string) error {
 	return e.vm.DoString(src)
 }
 
-// RegisterEngineAPI exposes play_sound, switch_scene, quit, and emit to Lua
+// RegisterEngineAPI exposes play_sound, switch_scene, quit, emit, and get_entity_position to Lua
 // scripts as the global "engine" table (e.g. engine.play_sound("click.wav")).
 func (e *LuaEngine) RegisterEngineAPI(
 	playSound func(string),
 	switchScene func(string),
 	quit func(),
 	emit func(string, map[string]interface{}),
+	getEntityPosition func(string, string) (float64, bool),
 ) {
-	e.vm.RegisterEngine("engine", EngineFuncs(playSound, switchScene, quit, emit))
+	e.vm.RegisterEngine("engine", EngineFuncs(playSound, switchScene, quit, emit, getEntityPosition))
 }
 
 // CallScriptUpdate sets the global Lua "self" to the entity API for go_ and

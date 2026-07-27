@@ -13,6 +13,7 @@ _spec = importlib.util.spec_from_file_location(
 _st_module = importlib.util.module_from_spec(_spec)
 
 _st_module.self = MagicMock()
+_st_module.engine = MagicMock()
 
 _spec.loader.exec_module(_st_module)
 st = _st_module
@@ -23,7 +24,9 @@ class TestSphereTimer(unittest.TestCase):
 
     def setUp(self):
         st.self.reset_mock()
+        st.engine.reset_mock()
         st.self.get_name.return_value = "sphere_1"
+        st.self.get_position.side_effect = lambda axis: {"x": 111.0, "y": 222.0}[axis]
 
     def _set_remaining(self, seconds):
         st.self.get_timer.return_value = seconds
@@ -64,6 +67,32 @@ class TestSphereTimer(unittest.TestCase):
         self._set_remaining(0.2)
         st.update(0.2)
         st.self.destroy.assert_called_once()
+
+    def test_spawns_explosion_vfx_at_own_position_when_exploding(self):
+        self._set_remaining(0.1)
+        st.update(0.2)
+        st.engine.emit.assert_called_once()
+        name, payload = st.engine.emit.call_args[0]
+        self.assertEqual(name, "SpawnEntity")
+        self.assertEqual(payload["prototype"], "explosion_prototype")
+        self.assertEqual(payload["x"], 111.0)
+        self.assertEqual(payload["y"], 222.0)
+
+    def test_does_not_spawn_explosion_vfx_while_time_remains(self):
+        self._set_remaining(4.0)
+        st.update(0.5)
+        st.engine.emit.assert_not_called()
+
+    def test_explosion_vfx_spawned_before_destroy(self):
+        """The explosion should be visible even though the sphere itself is destroyed the same
+        frame -- spawning it first (before self.destroy()) ensures MainMenu.spawnEntity sees a
+        still-consistent world regardless of destroy-processing order."""
+        self._set_remaining(0.1)
+        call_order = []
+        st.engine.emit.side_effect = lambda *a, **k: call_order.append("emit")
+        st.self.destroy.side_effect = lambda: call_order.append("destroy")
+        st.update(0.2)
+        self.assertEqual(call_order, ["emit", "destroy"])
 
     def test_uses_entity_name_in_log_messages(self):
         """Different spheres (different self.get_name()) must not share countdown state --

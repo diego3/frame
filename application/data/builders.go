@@ -91,7 +91,7 @@ func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (
 	if v, ok := params["loop"].(bool); ok {
 		loop = v
 	}
-	return &object.Spritesheet{
+	sheet := &object.Spritesheet{
 		Name:        name,
 		Image:       img,
 		FrameWidth:  fw,
@@ -101,7 +101,24 @@ func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (
 		FrameIndex:  frameIndex,
 		FPS:         fps,
 		Loop:        loop,
-	}, nil
+	}
+	if _, hasTint := params["tint_r"]; hasTint {
+		r, _ := intParam(params, "tint_r")
+		g, _ := intParam(params, "tint_g")
+		b, _ := intParam(params, "tint_b")
+		clamp := func(v int) uint8 {
+			if v < 0 {
+				return 0
+			}
+			if v > 255 {
+				return 255
+			}
+			return uint8(v)
+		}
+		sheet.HasTint = true
+		sheet.Tint = color.RGBA{clamp(r), clamp(g), clamp(b), 255}
+	}
+	return sheet, nil
 }
 
 func buildAnimator(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {

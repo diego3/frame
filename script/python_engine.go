@@ -25,10 +25,11 @@ type PythonEngine struct {
 	modules map[string]*py.Module // script path → loaded module
 
 	// engine API callbacks registered via RegisterEngineAPI
-	playSound   func(string)
-	switchScene func(string)
-	quit        func()
-	emit        func(string, map[string]interface{})
+	playSound         func(string)
+	switchScene       func(string)
+	quit              func()
+	emit              func(string, map[string]interface{})
+	getEntityPosition func(string, string) (float64, bool)
 }
 
 // NewPythonEngine creates a new PythonEngine with a fresh gpython context.
@@ -46,11 +47,13 @@ func (e *PythonEngine) RegisterEngineAPI(
 	switchScene func(string),
 	quit func(),
 	emit func(string, map[string]interface{}),
+	getEntityPosition func(string, string) (float64, bool),
 ) {
 	e.playSound = playSound
 	e.switchScene = switchScene
 	e.quit = quit
 	e.emit = emit
+	e.getEntityPosition = getEntityPosition
 }
 
 // newScriptModule creates a fresh module for a script and injects the engine
@@ -229,6 +232,27 @@ func (e *PythonEngine) buildEngineObject() *py.Module {
 			}
 			return py.None, nil
 		}, 0, "emit(name[, payload]) -- emit a ScriptEmitted event")
+
+	m.Globals["get_entity_position"] = py.MustNewMethod("get_entity_position",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 2 {
+				return nil, py.ExceptionNewf(py.TypeError, "get_entity_position() requires 2 arguments")
+			}
+			name, err := pyToString(args[0])
+			if err != nil {
+				return nil, err
+			}
+			axis, err := pyToString(args[1])
+			if err != nil {
+				return nil, err
+			}
+			if e.getEntityPosition != nil {
+				if v, ok := e.getEntityPosition(name, axis); ok {
+					return py.Float(v), nil
+				}
+			}
+			return py.Float(0), nil
+		}, 0, "get_entity_position(name, axis) -> float -- read another entity's position by name; axis: 'x' or 'y'; 0 if not found")
 
 	return m
 }

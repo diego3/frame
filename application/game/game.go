@@ -91,6 +91,10 @@ func (g *Game) Init() error {
 		g.switchScene,
 		g.quit,
 		g.emitScript,
+		// This engine instance has no scene/world to query; Game itself never runs scripts
+		// through it (see ScriptEngine()'s doc comment) and MainMenu registers its own engine
+		// with a real getEntityPosition wired to its own world (see view/scene/mainmenu.go).
+		func(name, axis string) (float64, bool) { return 0, false },
 	)
 	if err := g.manager.SwitchTo(g.initialSceneID, g.cfg, g.loader, g.ui, g.bus); err != nil {
 		return err
@@ -171,7 +175,10 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 // ScriptEngine returns the active script engine (Lua or Python).
-// The engine has engine.play_sound, engine.switch_scene, engine.quit, and engine.emit registered.
+// The engine has engine.play_sound, engine.switch_scene, engine.quit, engine.emit, and
+// engine.get_entity_position registered (the last always reports "not found" here, since this
+// engine instance has no scene/world of its own -- see MainMenu, which registers its own engine
+// with a real implementation).
 // Returns nil after Shutdown.
 func (g *Game) ScriptEngine() script.Engine {
 	return g.scriptEngine

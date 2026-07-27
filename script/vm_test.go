@@ -17,6 +17,7 @@ func TestVM_DoString(t *testing.T) {
 		func(sceneID string) {},
 		func() { called = true },
 		func(name string, payload map[string]interface{}) {},
+		func(name, axis string) (float64, bool) { return 0, false },
 	))
 
 	if err := vm.DoString(`engine.quit()`); err != nil {
@@ -36,6 +37,7 @@ func TestVM_DoString_script_error(t *testing.T) {
 		func(string) {},
 		func() {},
 		func(string, map[string]interface{}) {},
+		func(string, string) (float64, bool) { return 0, false },
 	))
 
 	err := vm.DoString(`syntax error here`)
@@ -78,6 +80,7 @@ func TestVM_engine_emit(t *testing.T) {
 			gotName = name
 			gotPayload = payload
 		},
+		func(name, axis string) (float64, bool) { return 0, false },
 	))
 
 	err := vm.DoString(`engine.emit("ItemCollected", { item_id = "sword", count = 1 })`)

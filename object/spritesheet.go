@@ -2,6 +2,7 @@ package object
 
 import (
 	"image"
+	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -20,6 +21,8 @@ type Spritesheet struct {
 	FrameIndex  int           // current frame (0-based)
 	FPS         float64       // frames per second for animation; 0 = static (no auto-advance)
 	Loop        bool          // when false, play once and stop (default true)
+	HasTint     bool          // when true, multiply every drawn pixel's RGB by Tint (alpha untouched)
+	Tint        color.RGBA    // e.g. {0,0,0,255} recolors the whole sheet to a black silhouette
 	accumulator float64       // for FPS-based animation
 	finished    bool          // true when a non-looping animation has reached the last frame
 }
@@ -144,5 +147,14 @@ func (s *Spritesheet) Draw(screen *ebiten.Image, transform *Transform) {
 		ty += float64(s.FrameHeight) * -transform.ScaleY
 	}
 	op.GeoM.Translate(tx, ty)
+	if s.HasTint {
+		// ColorScale multiplies each channel of the source pixel; scaling RGB to the tint's
+		// values while leaving alpha at its default (1) recolors every opaque pixel to Tint
+		// without altering the frame's shape/alpha (e.g. a fire-colored explosion sheet drawn
+		// as a black silhouette, per art direction), regardless of the source artwork's colors.
+		op.ColorScale.SetR(float32(s.Tint.R) / 255)
+		op.ColorScale.SetG(float32(s.Tint.G) / 255)
+		op.ColorScale.SetB(float32(s.Tint.B) / 255)
+	}
 	screen.DrawImage(sub, op)
 }
