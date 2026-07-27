@@ -22,6 +22,18 @@
 # excludes entirely. is_grounded only gates whether a jump is allowed; it does not affect gravity
 # or landing, both of which Box2D already handles correctly on its own.
 #
+# is_grounded is derived from a *count* of currently-touching GROUND_OBJECTS, not a plain
+# overwritten boolean: the player can touch more than one of them at once (e.g. standing on the
+# ground right next to a crate), and a boolean would go permanently False the moment contact with
+# just ONE of them ends, even while still resting on another (e.g. brushing a crate's corner while
+# walking, then separating from it, while never leaving the ground) -- this was reproducible and
+# looked exactly like "jumping randomly stops working" during normal movement.
+#
+# A jump request is also only ever honored at the instant it's grounded -- it is intentionally NOT
+# queued for whenever the player next lands. Queuing caused an unrelated but similarly confusing
+# symptom: pressing space while airborne appeared to do nothing, then triggered an unrequested
+# jump the moment the player touched down.
+#
 # Engine API (injected as module global "engine"):
 #   engine.emit(name, payload={})
 #
@@ -43,21 +55,30 @@ facing_x = 1.0
 
 pending_shoot = False
 pending_jump = False
+
+# Number of GROUND_OBJECTS currently in contact with the player; is_grounded is derived from this
+# (see module docstring above for why a plain boolean isn't enough). Starts at 1: the player
+# spawns resting directly on the ground, matching the very first BeginContact that fires once
+# physics catches up.
+_ground_contacts = 1
 is_grounded = True
 
 
 def on_event(name, payload):
-    global pending_shoot, pending_jump, is_grounded
+    global pending_shoot, pending_jump, is_grounded, _ground_contacts
     if name == "AttackRequested":
         pending_shoot = True
     elif name == "JumpRequested":
-        pending_jump = True
+        if is_grounded:
+            pending_jump = True
     elif name == "BeginContact":
         if _touches_ground(payload):
+            _ground_contacts += 1
             is_grounded = True
     elif name == "EndContact":
         if _touches_ground(payload):
-            is_grounded = False
+            _ground_contacts = max(0, _ground_contacts - 1)
+            is_grounded = _ground_contacts > 0
 
 
 def _touches_ground(payload):

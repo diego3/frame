@@ -27,15 +27,21 @@ class TestPlayerController(unittest.TestCase):
     """Test player controller state and behavior."""
 
     def setUp(self):
-        """Reset global state before each test."""
+        """Reset global state before each test. Default: resting on one ground contact
+        (matches the module's own initial state -- the player spawns on the ground)."""
         pc.facing_x = 1.0
         pc.pending_shoot = False
         pc.pending_jump = False
+        pc._ground_contacts = 1
         pc.is_grounded = True
         pc.self.reset_mock()
         pc.engine.reset_mock()
         pc.self.get_intent.return_value = 0  # default: no movement
         pc.self.get_velocity.return_value = 0  # default: at rest vertically
+
+    def _set_airborne(self):
+        pc._ground_contacts = 0
+        pc.is_grounded = False
 
     def test_initial_state(self):
         """Player starts grounded, facing right."""
@@ -53,45 +59,74 @@ class TestPlayerController(unittest.TestCase):
 
     def test_ground_detection_via_begin_contact(self):
         """BeginContact between player and ground sets is_grounded."""
-        pc.is_grounded = False
+        self._set_airborne()
         pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertTrue(pc.is_grounded)
 
     def test_ground_detection_via_begin_contact_name_order_reversed(self):
         """BeginContact sets is_grounded regardless of which name is A vs B."""
-        pc.is_grounded = False
+        self._set_airborne()
         pc.on_event("BeginContact", {"GameObjectNameA": "ground", "GameObjectNameB": "player"})
         self.assertTrue(pc.is_grounded)
 
     def test_ground_detection_via_crate_contact(self):
         """BeginContact against a crate also counts as grounded."""
-        pc.is_grounded = False
+        self._set_airborne()
         pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_2"})
         self.assertTrue(pc.is_grounded)
 
     def test_ground_detection_ignores_unrelated_contact(self):
         """BeginContact between unrelated objects does not affect the player."""
-        pc.is_grounded = False
+        self._set_airborne()
         pc.on_event("BeginContact", {"GameObjectNameA": "enemy_1", "GameObjectNameB": "ground"})
         self.assertFalse(pc.is_grounded)
 
     def test_ground_detection_via_end_contact(self):
         """EndContact between player and ground clears is_grounded."""
-        pc.is_grounded = True
         pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertFalse(pc.is_grounded)
 
+    def test_grounded_survives_leaving_a_secondary_contact(self):
+        """Regression test: touching the ground AND a crate at once, then only separating from the
+        crate, must NOT clear is_grounded -- the player is still resting on the ground. A plain
+        overwritten boolean (instead of a contact count) got this wrong: the crate's EndContact
+        would clobber is_grounded to False even though contact with "ground" was never lost,
+        which looked like jumping randomly breaking during normal movement near crates/enemies."""
+        # setUp already simulates one contact (the ground). Add a second, incidental one.
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_1"})
+        self.assertTrue(pc.is_grounded)
+
+        # Separate from the crate only -- the ground contact never ended.
+        pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "crate_1"})
+        self.assertTrue(pc.is_grounded, "should still be grounded via the ground contact")
+
+    def test_ground_contact_count_does_not_go_negative(self):
+        """A stray EndContact with no matching BeginContact must not leave the counter negative
+        (which would require multiple BeginContacts to ever become grounded again)."""
+        self._set_airborne()
+        pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
+        self.assertEqual(pc._ground_contacts, 0)
+        pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
+        self.assertTrue(pc.is_grounded)
+
     def test_jump_when_grounded(self):
         """Jump applies an upward impulse when grounded."""
-        pc.is_grounded = True
         pc.pending_jump = True
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
         self.assertFalse(pc.pending_jump)
 
-    def test_jump_when_airborne_is_queued(self):
-        """Jump when airborne is queued (not applied) until grounded."""
-        pc.is_grounded = False
+    def test_jump_request_dropped_when_airborne(self):
+        """JumpRequested while airborne is dropped immediately, not queued for landing --
+        queuing made the jump appear to fire on its own whenever the player next touched down."""
+        self._set_airborne()
+        pc.on_event("JumpRequested", {})
+        self.assertFalse(pc.pending_jump)
+
+    def test_update_does_not_apply_impulse_when_not_grounded(self):
+        """Defensive check in update(): even if pending_jump were somehow set while airborne, no
+        impulse is applied until grounded."""
+        self._set_airborne()
         pc.pending_jump = True
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_not_called()
@@ -103,11 +138,17 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("AttackRequested", {})
         self.assertTrue(pc.pending_shoot)
 
-    def test_event_jump_requested(self):
-        """JumpRequested event sets pending_jump."""
+    def test_event_jump_requested_when_grounded(self):
+        """JumpRequested event sets pending_jump when grounded."""
         self.assertFalse(pc.pending_jump)
         pc.on_event("JumpRequested", {})
         self.assertTrue(pc.pending_jump)
+
+    def test_event_jump_requested_ignored_when_airborne(self):
+        """JumpRequested event is ignored (not queued) when airborne."""
+        self._set_airborne()
+        pc.on_event("JumpRequested", {})
+        self.assertFalse(pc.pending_jump)
 
     def test_movement_right(self):
         """Movement right updates facing and sets velocity."""
@@ -156,9 +197,8 @@ class TestPlayerController(unittest.TestCase):
         )
 
     def test_full_jump_sequence(self):
-        """Simulate: grounded -> jump requested -> impulse applied -> airborne (EndContact) ->
-        landing (BeginContact) -> jump allowed again."""
-        pc.is_grounded = True
+        """Simulate: grounded -> jump -> airborne (EndContact) -> jump request dropped (no queue)
+        -> landing (BeginContact) -> jump allowed again."""
         pc.on_event("JumpRequested", {})
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
@@ -167,9 +207,10 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("EndContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertFalse(pc.is_grounded)
 
-        # A second jump request while airborne must not apply another impulse.
+        # A jump request while airborne is dropped, not queued.
         pc.self.apply_linear_impulse_to_center.reset_mock()
         pc.on_event("JumpRequested", {})
+        self.assertFalse(pc.pending_jump)
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_not_called()
 
@@ -177,7 +218,7 @@ class TestPlayerController(unittest.TestCase):
         pc.on_event("BeginContact", {"GameObjectNameA": "player", "GameObjectNameB": "ground"})
         self.assertTrue(pc.is_grounded)
 
-        # Now a jump is allowed again.
+        # Now a fresh jump request is allowed again.
         pc.on_event("JumpRequested", {})
         pc.update(0.016)
         pc.self.apply_linear_impulse_to_center.assert_called_once_with(0, -pc.JUMP_IMPULSE)
