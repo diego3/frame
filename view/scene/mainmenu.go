@@ -3,6 +3,7 @@ package scene
 import (
 	"image/color"
 	"io/fs"
+	"math"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -61,16 +62,17 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 		m.debugDrawPhysics = !m.debugDrawPhysics
 	})
 	event.Subscribe(bus, func(ev events.MoveRequested) {
-		if m.world != nil {
-			if k := m.world.Find("knight"); k != nil {
-				if c := k.GetComponent("intent_buffer"); c != nil {
-					ib := c.(*object.IntentBuffer)
-					ib.PendingMoveX, ib.PendingMoveY = ev.DirX, ev.DirY
-				}
+		if controlled := m.findControlled(); controlled != nil {
+			if c := controlled.GetComponent("intent_buffer"); c != nil {
+				ib := c.(*object.IntentBuffer)
+				ib.PendingMoveX, ib.PendingMoveY = ev.DirX, ev.DirY
 			}
 		}
 	})
 	event.Subscribe(bus, func(ev events.ScriptEmitted) {
+		if ev.Name == "SpawnProjectile" {
+			m.spawnProjectile(ev.Payload)
+		}
 		if m.engine != nil {
 			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
 		}
@@ -173,6 +175,87 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 	}
 
 	return nil
+}
+
+// findControlled returns the first active GameObject with an intent_buffer component — the single
+// player-controlled entity a scene is expected to have (e.g. "knight" in demo1, "player" in
+// metalslug_demo). Not name-specific, so scenes are free to name their controlled entity anything.
+func (m *MainMenu) findControlled() *object.GameObject {
+	if m.world == nil {
+		return nil
+	}
+	for _, go_ := range m.world.Objects() {
+		if go_.Active && go_.GetComponent("intent_buffer") != nil {
+			return go_
+		}
+	}
+	return nil
+}
+
+// spawnProjectile builds a projectile GameObject at the controlled entity's center, offset in the
+// facing direction given by payload's "dir_x"/"dir_y" (defaults to facing right), and adds it to
+// the world. Movement and off-screen deactivation aren't implemented yet — see
+// docs/game_concept_metal_slug_demo.md build order step 4 — so the projectile is visible but
+// stationary until that lands.
+func (m *MainMenu) spawnProjectile(payload map[string]interface{}) {
+	if m.world == nil {
+		return
+	}
+	origin := m.findControlled()
+	if origin == nil {
+		return
+	}
+	t := origin.Transform()
+	if t == nil {
+		return
+	}
+	cx, cy := t.X, t.Y
+	if pb := origin.PhysicsBody(); pb != nil {
+		cx += pb.Width / 2
+		cy += pb.Height / 2
+	}
+
+	dirX, dirY := normalizeDir(payloadFloat(payload, "dir_x", 1), payloadFloat(payload, "dir_y", 0))
+
+	const (
+		projectileSpeed  = 360.0 // world units/sec, consumed once movement lands
+		projectileDamage = 1.0
+		projectileSize   = 8.0
+		spawnOffset      = 30.0 // clear of the controlled entity's own body
+	)
+
+	proj := object.NewGameObject("projectile")
+	proj.AddComponent(&object.Transform{
+		X: cx + dirX*spawnOffset - projectileSize/2,
+		Y: cy + dirY*spawnOffset - projectileSize/2,
+	})
+	proj.AddComponent(&object.Block{Width: projectileSize, Height: projectileSize})
+	proj.AddComponent(&object.Projectile{VelX: dirX * projectileSpeed, VelY: dirY * projectileSpeed, Damage: projectileDamage})
+	m.world.Add(proj)
+}
+
+// payloadFloat reads key from payload as a float64, accepting whatever numeric type the script
+// engine produced (Lua and Python payload numbers may arrive as float64, int, or int64), or
+// fallback if key is absent or not a number.
+func payloadFloat(payload map[string]interface{}, key string, fallback float64) float64 {
+	switch v := payload[key].(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	}
+	return fallback
+}
+
+// normalizeDir returns (x, y) scaled to unit length, or (1, 0) if both are zero.
+func normalizeDir(x, y float64) (float64, float64) {
+	length := math.Sqrt(x*x + y*y)
+	if length == 0 {
+		return 1, 0
+	}
+	return x / length, y / length
 }
 
 // cameraTargetCenter returns the world-space center of the camera's follow target, and whether it

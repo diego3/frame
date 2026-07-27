@@ -1,0 +1,75 @@
+# Level 1 (Python scripting variant) — identical to level1.yaml except the player's script
+# points at the Python controller instead of the Lua one. See level1.yaml for the level notes.
+
+objects:
+  - name: player
+    components:
+      - type: transform
+        x: 100
+        y: 380
+      - type: block
+        width: 50
+        height: 80
+        color_r: 90
+        color_g: 140
+        color_b: 90
+      - type: physics_body
+        body_type: kinematic
+        width: 50
+        height: 80
+        mass: 10
+      - type: intent_buffer
+      - type: script
+        path: "scripts/player_controller.py"
+  - name: ground
+    components:
+      - type: transform
+        x: 0
+        y: 460
+      - type: block
+        width: 2400
+        height: 80
+        color_r: 80
+        color_g: 70
+        color_b: 60
+      - type: physics_body
+        body_type: static
+  - name: crate_1
+    components:
+      - type: transform
+        x: 700
+        y: 380
+      - type: block
+        width: 60
+        height: 80
+        color_r: 120
+        color_g: 100
+        color_b: 60
+      - type: physics_body
+        body_type: static
+  - name: crate_2
+    components:
+      - type: transform
+        x: 1400
+        y: 400
+      - type: block
+        width: 80
+        height: 60
+        color_r: 120
+        color_g: 100
+        color_b: 60
+      - type: physics_body
+        body_type: static
+  - name: crate_3
+    components:
+      - type: transform
+        x: 2050
+        y: 380
+      - type: block
+        width: 60
+        height: 80
+        color_r: 120
+        color_g: 100
+        color_b: 60
+      - type: physics_body
+        body_type: static
