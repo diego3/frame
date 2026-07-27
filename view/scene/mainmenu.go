@@ -158,6 +158,7 @@ func (m *MainMenu) Setup(ctx *ports.SceneContext) error {
 		pixelScale := cfg.Physics.PixelScale
 		physWorld := box2d.NewWorld(gravity, pixelScale)
 		m.physicsSystem = NewPhysicsSystem(physWorld)
+		m.physicsSystem.SetEventEmitter(bus)
 		m.physicsSystem.InitFromWorld(m.world)
 		m.physicsSystem.LogBodies()
 	}

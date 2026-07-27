@@ -34,12 +34,27 @@ is_grounded = True
 prev_velocity_y = 0
 
 
-def on_event(name, _payload):
-    global pending_shoot, pending_jump
+def on_event(name, payload):
+    global pending_shoot, pending_jump, is_grounded
     if name == "AttackRequested":
         pending_shoot = True
     elif name == "JumpRequested":
         pending_jump = True
+    elif name == "BeginContact":
+        # Check if we're touching the ground (player touching ground or crate)
+        name_a = payload.get("GameObjectNameA", "")
+        name_b = payload.get("GameObjectNameB", "")
+        if name_a == "player" and name_b in ("ground", "crate_1", "crate_2", "crate_3"):
+            is_grounded = True
+        elif name_b == "player" and name_a in ("ground", "crate_1", "crate_2", "crate_3"):
+            is_grounded = True
+    elif name == "EndContact":
+        # When leaving ground, not immediately grounded (will be set based on velocity)
+        name_a = payload.get("GameObjectNameA", "")
+        name_b = payload.get("GameObjectNameB", "")
+        if (name_a == "player" and name_b in ("ground", "crate_1", "crate_2", "crate_3")) or \
+           (name_b == "player" and name_a in ("ground", "crate_1", "crate_2", "crate_3")):
+            is_grounded = False
 
 
 def update(dt):

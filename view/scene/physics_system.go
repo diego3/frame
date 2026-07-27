@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"log"
 
+	"goengine/event"
+	"goengine/events"
 	"goengine/object"
 	"goengine/physics"
 
@@ -35,6 +37,7 @@ type PhysicsSystem struct {
 	world           physics.World
 	kinematicBodies map[string]kinematicEntry
 	staticDebug     []staticDebugInfo
+	emitter         event.Emitter
 }
 
 // NewPhysicsSystem creates a system that steps the given physics world and syncs named bodies to the object world.
@@ -42,7 +45,13 @@ func NewPhysicsSystem(world physics.World) *PhysicsSystem {
 	return &PhysicsSystem{
 		world:           world,
 		kinematicBodies: make(map[string]kinematicEntry),
+		emitter:         nil,
 	}
+}
+
+// SetEventEmitter registers the event emitter for contact events. Call after creation if contact events are needed.
+func (s *PhysicsSystem) SetEventEmitter(emitter event.Emitter) {
+	s.emitter = emitter
 }
 
 // CreateKinematicBody creates a kinematic body for the named object and adds a PhysicsBody component.
@@ -152,6 +161,8 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 		pb.Body = body
 		pb.Width = w
 		pb.Height = h
+		// Register body name for contact reporting
+		s.world.RegisterBodyName(body, obj.Name)
 		if pb.BodyType == physics.BodyStatic {
 			s.staticDebug = append(s.staticDebug, staticDebugInfo{name: obj.Name, center: center, width: w, height: h})
 		} else {
@@ -216,9 +227,29 @@ func (s *PhysicsSystem) DrawDebug(screen *ebiten.Image, objectWorld *object.Mana
 	}
 }
 
-// Step advances the physics simulation by dt seconds.
+// Step advances the physics simulation by dt seconds and emits contact events.
 func (s *PhysicsSystem) Step(dt float64) {
 	s.world.Step(dt)
+	if s.emitter != nil {
+		s.emitContactEvents()
+	}
+}
+
+// emitContactEvents emits BeginContact and EndContact events based on physics contacts this frame.
+func (s *PhysicsSystem) emitContactEvents() {
+	began, ended := s.world.GetContactsNamesThisFrame()
+	for _, pair := range began {
+		s.emitter.Emit(events.BeginContact{
+			GameObjectNameA: pair[0],
+			GameObjectNameB: pair[1],
+		})
+	}
+	for _, pair := range ended {
+		s.emitter.Emit(events.EndContact{
+			GameObjectNameA: pair[0],
+			GameObjectNameB: pair[1],
+		})
+	}
 }
 
 // SyncToWorld copies kinematic body positions (center) to the corresponding GameObjects' Transforms (top-left).

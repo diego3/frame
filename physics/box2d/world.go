@@ -14,14 +14,16 @@ const defaultPixelScale = 64.0
 
 // worldImpl implements physics.World using box2d-go.
 type worldImpl struct {
-	w    b2.World
-	scale float64
+	w          b2.World
+	scale      float64
+	shapeNames map[b2.ShapeId]string // maps shape id to GameObject name for contact reporting
 }
 
 // bodyImpl implements physics.Body.
 type bodyImpl struct {
 	b     b2.Body
 	scale float64
+	name  string // GameObject name, set by the physics system for contact reporting
 }
 
 // NewWorld creates a physics world using Box2D. Gravity is in game units per second² (Y positive = down).
@@ -34,7 +36,11 @@ func NewWorld(gravity physics.Vec2, pixelScale float64) physics.World {
 	// Box2D Y-up: our gravity (0, 98) pixels/s² down -> (0, -98/scale) m/s²
 	def.Gravity = b2.Vec2{X: float32(gravity.X / pixelScale), Y: float32(-gravity.Y / pixelScale)}
 	w := b2.CreateWorld(def)
-	return &worldImpl{w: w, scale: pixelScale}
+	return &worldImpl{
+		w:          w,
+		scale:      pixelScale,
+		shapeNames: make(map[b2.ShapeId]string),
+	}
 }
 
 func (w *worldImpl) gameToB2(pos physics.Vec2) b2.Vec2 {
@@ -181,3 +187,40 @@ func (b *bodyImpl) ApplyLinearImpulseToCenter(impulse physics.Vec2) {
 	b.b.ApplyLinearImpulseToCenter(imp, 1)
 }
 
+// RegisterBodyName associates a body with a GameObject name for contact reporting.
+// This registers all shapes in the body with the given name.
+func (w *worldImpl) RegisterBodyName(body physics.Body, name string) {
+	if b, ok := body.(*bodyImpl); ok {
+		b.name = name
+		// Register all shapes in this body with the name
+		shapes := b.b.GetShapes(nil)
+		for _, shape := range shapes {
+			w.shapeNames[shape.Id] = name
+		}
+	}
+}
+
+// GetContactsNamesThisFrame returns pairs of GameObject names that began and ended contact this frame.
+func (w *worldImpl) GetContactsNamesThisFrame() (began, ended [][2]string) {
+	events := w.w.GetContactEvents()
+
+	// Process begin contact events
+	for _, ev := range events.BeginEvents {
+		nameA := w.shapeNames[ev.ShapeIdA]
+		nameB := w.shapeNames[ev.ShapeIdB]
+		if nameA != "" && nameB != "" && nameA != nameB {
+			began = append(began, [2]string{nameA, nameB})
+		}
+	}
+
+	// Process end contact events
+	for _, ev := range events.EndEvents {
+		nameA := w.shapeNames[ev.ShapeIdA]
+		nameB := w.shapeNames[ev.ShapeIdB]
+		if nameA != "" && nameB != "" && nameA != nameB {
+			ended = append(ended, [2]string{nameA, nameB})
+		}
+	}
+
+	return
+}
