@@ -19,7 +19,8 @@ type SceneDef struct {
 // ObjectDef defines one game object and its components.
 type ObjectDef struct {
 	Name       string                   `yaml:"name"`
-	Active     *bool                    `yaml:"active"` // nil = true
+	Active     *bool                    `yaml:"active"`    // nil = true
+	Prototype  bool                     `yaml:"prototype"` // true = template only, never run/drawn; see object.GameObject.Clone
 	Components []map[string]interface{} `yaml:"components"`
 }
 
@@ -71,6 +72,7 @@ func BuildWorld(def *SceneDef, loader ports.ImageLoader) (*object.Manager, error
 		if o.Active != nil && !*o.Active {
 			obj.Active = false
 		}
+		obj.IsPrototype = o.Prototype
 		for i, c := range o.Components {
 			if c == nil {
 				continue

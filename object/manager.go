@@ -41,9 +41,10 @@ func (w *Manager) Objects() []*GameObject {
 
 // Update runs Update(dt) on Updater components of active GameObjects.
 // If a GameObject has an Animator, only the spritesheet matching Animator.Current is updated (so only one animation advances).
+// Prototypes (IsPrototype) are templates only — never updated.
 func (w *Manager) Update(dt float64) {
 	for _, go_ := range w.gameObjects {
-		if !go_.Active {
+		if !go_.Active || go_.IsPrototype {
 			continue
 		}
 		if c, ok := go_.AnimatedComponent(); ok {
@@ -63,9 +64,10 @@ func (w *Manager) Update(dt float64) {
 // Draw runs Draw(screen, transform) on Drawer components of active GameObjects.
 // If a GameObject has an Animator, only the spritesheet matching Animator.Current is drawn ("spritesheet:"+Current).
 // Otherwise all Drawer components are drawn.
+// Prototypes (IsPrototype) are templates only — never drawn.
 func (w *Manager) Draw(screen *ebiten.Image) {
 	for _, go_ := range w.gameObjects {
-		if !go_.Active {
+		if !go_.Active || go_.IsPrototype {
 			continue
 		}
 		transform := go_.Transform()

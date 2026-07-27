@@ -6,10 +6,11 @@ var nextID uint64
 
 // GameObject is a container for components, similar to Unity's GameObject.
 type GameObject struct {
-	ID         uint64
-	Name       string
-	Active     bool
-	components map[string]Component
+	ID          uint64
+	Name        string
+	Active      bool
+	IsPrototype bool // true for a template GameObject never run/drawn, only cloned (see Clone)
+	components  map[string]Component
 }
 
 // NewGameObject returns a new active GameObject with the given name.
@@ -34,6 +35,19 @@ func (g *GameObject) AddComponent(c Component) {
 // GetComponent returns the component with the given type name, or nil.
 func (g *GameObject) GetComponent(typeName string) Component {
 	return g.components[typeName]
+}
+
+// Clone returns a new, independent GameObject named name with a fresh ID, Active set true, and a
+// Clone() of every component g has (see the Prototype pattern: a template GameObject marked
+// IsPrototype is never itself run or drawn — see Manager.Update/Draw — only cloned to spawn real
+// instances, e.g. games/metalslug_demo's "projectile_prototype"). The clone's IsPrototype is
+// always false, regardless of g's.
+func (g *GameObject) Clone(name string) *GameObject {
+	clone := NewGameObject(name)
+	for typeName, c := range g.components {
+		clone.components[typeName] = c.Clone()
+	}
+	return clone
 }
 
 // Transform returns the Transform component if present.

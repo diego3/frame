@@ -9,6 +9,12 @@ type Animator struct {
 // Type implements Component.
 func (Animator) Type() string { return "animator" }
 
+// Clone implements Component.
+func (a *Animator) Clone() Component {
+	clone := *a
+	return &clone
+}
+
 // Play sets the current animation by name.
 func (a *Animator) Play(name string) {
 	a.Current = name
