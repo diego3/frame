@@ -15,7 +15,6 @@
 local PLAYER_SPEED = 150
 local JUMP_FORCE = 400  -- upward impulse in game units/s
 local GRAVITY = 800     -- gravity acceleration in game units/s² (must match config.yaml)
-local GROUND_CHECK_Y = 380  -- player y when on ground (460 - 50 height / 2)
 
 -- Facing direction, used as the shot direction; defaults to facing right until the player moves.
 local facing_x = 1.0
@@ -24,6 +23,7 @@ local pending_shoot = false
 local pending_jump = false
 local velocity_y = 0
 local is_grounded = true
+local prev_velocity_y = 0
 
 function on_event(name, _payload)
   if name == "AttackRequested" then
@@ -43,9 +43,16 @@ function update(dt)
   -- Apply gravity
   velocity_y = velocity_y + GRAVITY * dt
 
-  -- Ground detection: if velocity is moving downward (or stationary) and we're at ground level
-  local current_y = self.get_position("y") or GROUND_CHECK_Y
-  is_grounded = (velocity_y >= 0 and current_y >= GROUND_CHECK_Y - 5)
+  -- Ground detection: simple heuristic—if we were falling (prev_velocity_y > 0) and now
+  -- velocity is near zero or the physics engine has stopped us, we're grounded.
+  -- More reliably: use physics contact (which we'd need to implement), but for now,
+  -- assume grounded if velocity_y is very small (clamped by physics engine on impact).
+  if velocity_y > 0 then
+    is_grounded = true  -- falling and likely to contact ground soon
+  elseif velocity_y < -50 then
+    is_grounded = false  -- clearly in the air (upward)
+  end
+  -- else: velocity_y near zero, keep previous grounded state
 
   -- Apply jump if requested and grounded
   if pending_jump and is_grounded then
@@ -60,4 +67,6 @@ function update(dt)
     engine.emit("SpawnProjectile", { dir_x = facing_x, dir_y = 0 })
     pending_shoot = false
   end
+
+  prev_velocity_y = velocity_y
 end

@@ -23,7 +23,6 @@
 PLAYER_SPEED = 150
 JUMP_FORCE = 400  # upward impulse in game units/s
 GRAVITY = 800  # gravity acceleration in game units/s² (must match config.yaml)
-GROUND_CHECK_Y = 380  # player y when on ground (460 - 50 height / 2)
 
 # Facing direction, used as the shot direction; defaults to facing right until the player moves.
 facing_x = 1.0
@@ -32,6 +31,7 @@ pending_shoot = False
 pending_jump = False
 velocity_y = 0
 is_grounded = True
+prev_velocity_y = 0
 
 
 def on_event(name, _payload):
@@ -43,7 +43,7 @@ def on_event(name, _payload):
 
 
 def update(dt):
-    global facing_x, pending_shoot, pending_jump, velocity_y, is_grounded
+    global facing_x, pending_shoot, pending_jump, velocity_y, is_grounded, prev_velocity_y
 
     move_x = self.get_intent("move_x")
 
@@ -53,9 +53,14 @@ def update(dt):
     # Apply gravity
     velocity_y = velocity_y + GRAVITY * dt
 
-    # Ground detection: if velocity is moving downward (or stationary) and we're at ground level
-    current_y = self.get_position("y")
-    is_grounded = (velocity_y >= 0 and current_y >= GROUND_CHECK_Y - 5)
+    # Ground detection: simple heuristic—if we're falling (velocity_y > 0), we're grounded.
+    # If we're clearly in the air (velocity_y < -50), we're airborne.
+    # Otherwise keep the previous state.
+    if velocity_y > 0:
+        is_grounded = True  # falling and likely to contact ground soon
+    elif velocity_y < -50:
+        is_grounded = False  # clearly in the air (upward)
+    # else: velocity_y near zero, keep previous grounded state
 
     # Apply jump if requested and grounded
     if pending_jump and is_grounded:
@@ -68,3 +73,5 @@ def update(dt):
     if pending_shoot:
         engine.emit("SpawnProjectile", {"dir_x": facing_x, "dir_y": 0})
         pending_shoot = False
+
+    prev_velocity_y = velocity_y
