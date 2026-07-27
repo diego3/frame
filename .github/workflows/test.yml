@@ -1,0 +1,43 @@
+name: Go Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Build, vet, and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      # Ebitengine links against X11/OpenGL/ALSA at build time, and its glfw/audio bindings
+      # initialize a display connection as soon as the package is imported (not just when a
+      # window is actually opened) — so even running "go test" on packages that never render
+      # anything needs these libraries plus a display (via xvfb-run below).
+      - name: Install Ebitengine build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev \
+            libxxf86vm-dev libasound2-dev libgl1-mesa-dev xvfb
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # Runs headless under Xvfb: any package that imports Ebitengine (most of this module)
+      # needs a display at process start, not just for rendering.
+      - name: go test
+        run: xvfb-run -a go test ./...
