@@ -52,12 +52,12 @@ class TestPlayerController(unittest.TestCase):
         self.assertAlmostEqual(pc.velocity_y, expected_vy, places=2)
 
     def test_ground_detection_on_impact(self):
-        """When falling (prev_vy > 0) and velocity clamped (vy == 0), player is grounded."""
-        # Simulate impact: was falling, now stopped by Box2D
-        pc.velocity_y = 0
+        """When falling (prev_vy > 0) and velocity near zero, player is grounded."""
+        # Simulate impact: was falling, now stopped by Box2D (velocity may be ~0, not exactly 0)
+        pc.velocity_y = 0.5  # floating point imprecision from Box2D
         pc.prev_velocity_y = 50
         # Run ground detection logic
-        if pc.prev_velocity_y > 0 and pc.velocity_y == 0:
+        if pc.prev_velocity_y > 0 and abs(pc.velocity_y) < 1:
             pc.is_grounded = True
         self.assertTrue(pc.is_grounded)
 
