@@ -413,6 +413,25 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 			}
 		}, 0, "get_position(axis) -> float -- read position; axis: 'x' or 'y'")
 
+	m.Globals["set_facing"] = py.MustNewMethod("set_facing",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "set_facing() requires 1 argument")
+			}
+			dirX, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			if t := go_.Transform(); t != nil {
+				if dirX < 0 {
+					t.ScaleX = -1
+				} else {
+					t.ScaleX = 1
+				}
+			}
+			return py.None, nil
+		}, 0, "set_facing(dir_x) -- flips Transform.ScaleX to -1/1 based on the sign of dir_x; Sprite/Spritesheet/Block all mirror on ScaleX < 0")
+
 	return m
 }
 

@@ -10,6 +10,144 @@
 # both wired up — this scene is now the full build-plan MVP.
 
 objects:
+  # Background: alternating vertical stripes spanning the full level so camera-follow's horizontal
+  # scroll is visually obvious (plain black was impossible to judge motion against) before real
+  # art lands. Purely decorative -- no physics_body -- and listed first so object.Manager.Draw
+  # (which draws GameObjects in list order, see application/data.BuildWorld) renders them behind
+  # everything else. 12 stripes x 200 = 2400, matching layout.level_width exactly.
+  - name: bg_stripe_0
+    components:
+      - type: transform
+        x: 0
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_1
+    components:
+      - type: transform
+        x: 200
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+  - name: bg_stripe_2
+    components:
+      - type: transform
+        x: 400
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_3
+    components:
+      - type: transform
+        x: 600
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+  - name: bg_stripe_4
+    components:
+      - type: transform
+        x: 800
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_5
+    components:
+      - type: transform
+        x: 1000
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+  - name: bg_stripe_6
+    components:
+      - type: transform
+        x: 1200
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_7
+    components:
+      - type: transform
+        x: 1400
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+  - name: bg_stripe_8
+    components:
+      - type: transform
+        x: 1600
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_9
+    components:
+      - type: transform
+        x: 1800
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+  - name: bg_stripe_10
+    components:
+      - type: transform
+        x: 2000
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 120
+        color_g: 172
+        color_b: 222
+  - name: bg_stripe_11
+    components:
+      - type: transform
+        x: 2200
+        y: 0
+      - type: block
+        width: 200
+        height: 540
+        color_r: 96
+        color_g: 148
+        color_b: 200
+
   # Prototype (not a real object): "prototype: true" means this is never run or drawn (see
   # object.GameObject.IsPrototype) — it only exists to be cloned by spawnProjectile. Its transform
   # and projectile stats are overwritten on every clone; the values here are placeholders.
@@ -35,6 +173,7 @@ objects:
         color_r: 90
         color_g: 140
         color_b: 90
+        facing_marker: true
       - type: physics_body
         body_type: dynamic
         width: 50
@@ -49,12 +188,14 @@ objects:
       - type: transform
         x: 1900
         y: 380
+        scale_x: -1 # enemy_walk.py always moves left; -1 points the facing marker that way too
       - type: block
         width: 50
         height: 80
         color_r: 160
         color_g: 60
         color_b: 60
+        facing_marker: true
       - type: physics_body
         body_type: kinematic
         width: 50
@@ -114,5 +255,65 @@ objects:
         color_r: 120
         color_g: 100
         color_b: 60
+      - type: physics_body
+        body_type: static
+
+  # Platforms — floating static ledges at increasing height/difficulty, for exercising jump arcs
+  # beyond the crates above (a straight side-on wall vs. a ledge you jump ONTO are different
+  # tests). Height reached by a jump is measured from the ground SURFACE (y=460, where the
+  # player's feet rest), not from the player's own resting Transform.Y (380, which is offset by
+  # its own height) -- a jump peaks with the player's feet roughly 90-100 units above y=460, i.e.
+  # a reachable platform's top (its own Transform.Y, since platforms have no height offset here)
+  # needs to be no lower than ~y=365. platform_1..4 step from "trivial" to "right at the limit".
+  - name: platform_1
+    components:
+      - type: transform
+        x: 300
+        y: 425 # feet rise 460-425=35 units -- trivial hop
+      - type: block
+        width: 120
+        height: 20
+        color_r: 150
+        color_g: 130
+        color_b: 90
+      - type: physics_body
+        body_type: static
+  - name: platform_2
+    components:
+      - type: transform
+        x: 950
+        y: 400 # feet rise 60 units -- easy, needs an actual jump though
+      - type: block
+        width: 140
+        height: 20
+        color_r: 150
+        color_g: 130
+        color_b: 90
+      - type: physics_body
+        body_type: static
+  - name: platform_3
+    components:
+      - type: transform
+        x: 1300
+        y: 380 # feet rise 80 units -- moderate
+      - type: block
+        width: 140
+        height: 20
+        color_r: 150
+        color_g: 130
+        color_b: 90
+      - type: physics_body
+        body_type: static
+  - name: platform_4
+    components:
+      - type: transform
+        x: 1750
+        y: 365 # feet rise 95 units -- right at the limit of a single jump
+      - type: block
+        width: 150
+        height: 20
+        color_r: 150
+        color_g: 130
+        color_b: 90
       - type: physics_body
         body_type: static

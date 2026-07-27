@@ -117,7 +117,8 @@ func buildBlock(params map[string]interface{}, _ ports.ImageLoader) (object.Comp
 	if height <= 0 {
 		height = 64
 	}
-	blk := &object.Block{Width: width, Height: height}
+	facingMarker, _ := boolParam(params, "facing_marker")
+	blk := &object.Block{Width: width, Height: height, FacingMarker: facingMarker}
 	if _, hasColor := params["color_r"]; hasColor {
 		r, _ := intParam(params, "color_r")
 		g, _ := intParam(params, "color_g")

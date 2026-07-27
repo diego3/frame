@@ -43,6 +43,7 @@
 #   self.apply_linear_impulse_to_center(ix, iy)
 #   self.get_intent(key) -> float  (keys: "move_x", "move_y")
 #   self.get_position(axis) -> float  (axis: "x", "y")
+#   self.set_facing(dir_x) -- flips the block's facing marker (visual only, see object.Block)
 
 PLAYER_SPEED = 150
 JUMP_IMPULSE = 400  # instantaneous upward velocity change applied on jump, in game units/s
@@ -99,6 +100,7 @@ def update(dt):
 
     if move_x != 0:
         facing_x = 1.0 if move_x > 0 else -1.0
+    self.set_facing(facing_x)
 
     # Only drive the horizontal component; leave vertical velocity to Box2D (gravity + collision
     # response with the ground/crates run automatically for a dynamic body).
