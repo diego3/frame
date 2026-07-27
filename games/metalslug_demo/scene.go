@@ -7,11 +7,11 @@ package metalslug
 import (
 	"math"
 
-	"goengine/event"
-	"goengine/events"
-	"goengine/object"
-	"goengine/ports"
-	"goengine/view/scene"
+	"goengine/frameengine/event"
+	"goengine/frameengine/events"
+	"goengine/frameengine/object"
+	"goengine/frameengine/ports"
+	"goengine/frameengine/view/scene"
 )
 
 // Scene embeds the engine's generic WorldScene and adds exactly two Metal-Slug-specific rules on

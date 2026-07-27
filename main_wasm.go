@@ -8,11 +8,11 @@ import (
 
 	demo1 "goengine/games/demo1"
 
-	"goengine/application/config"
-	"goengine/application/engine"
-	"goengine/application/game"
-	"goengine/ports"
-	"goengine/view/scene"
+	"goengine/frameengine/application/config"
+	"goengine/frameengine/application/engine"
+	"goengine/frameengine/application/game"
+	"goengine/frameengine/ports"
+	"goengine/frameengine/view/scene"
 )
 
 // sceneFactories are the scene types this WASM build (demo1 only) needs. See main.go's comment
