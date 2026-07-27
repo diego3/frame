@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	configPath := "games/demo1/config.yaml"
+	configPath := "games/metalslug_demo/config_python.yaml"
 	if len(os.Args) > 1 {
 		configPath = os.Args[1]
 	}
