@@ -262,6 +262,49 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 			return py.None, nil
 		}, 0, "set_velocity(vx, vy) -- set the physics body linear velocity")
 
+	m.Globals["get_velocity"] = py.MustNewMethod("get_velocity",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "get_velocity() requires 1 argument")
+			}
+			axis, err := pyToString(args[0])
+			if err != nil {
+				return nil, err
+			}
+			pb := go_.PhysicsBody()
+			if pb == nil || pb.Body == nil {
+				return py.Float(0), nil
+			}
+			v := pb.Body.GetLinearVelocity()
+			switch axis {
+			case "x":
+				return py.Float(v.X), nil
+			case "y":
+				return py.Float(v.Y), nil
+			default:
+				return py.Float(0), nil
+			}
+		}, 0, "get_velocity(axis) -> float -- read the physics body linear velocity; axis: 'x' or 'y'")
+
+	m.Globals["apply_linear_impulse_to_center"] = py.MustNewMethod("apply_linear_impulse_to_center",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 2 {
+				return nil, py.ExceptionNewf(py.TypeError, "apply_linear_impulse_to_center() requires 2 arguments")
+			}
+			ix, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			iy, err := pyToFloat64(args[1])
+			if err != nil {
+				return nil, err
+			}
+			if pb := go_.PhysicsBody(); pb != nil && pb.Body != nil {
+				pb.Body.ApplyLinearImpulseToCenter(physics.Vec2{X: ix, Y: iy})
+			}
+			return py.None, nil
+		}, 0, "apply_linear_impulse_to_center(ix, iy) -- apply an instant velocity change (game units/s) at the body center, for dynamic bodies (e.g. a jump)")
+
 	m.Globals["play_animation"] = py.MustNewMethod("play_animation",
 		func(_ py.Object, args py.Tuple) (py.Object, error) {
 			if len(args) < 1 {
@@ -346,6 +389,87 @@ func (e *PythonEngine) buildSelfObject(go_ *object.GameObject) *py.Module {
 		func(_ py.Object, args py.Tuple) (py.Object, error) {
 			return py.String(go_.Name), nil
 		}, 0, "get_name() -> str -- return the entity name")
+
+	m.Globals["get_position"] = py.MustNewMethod("get_position",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "get_position() requires 1 argument")
+			}
+			axis, err := pyToString(args[0])
+			if err != nil {
+				return nil, err
+			}
+			t := go_.Transform()
+			if t == nil {
+				return py.Float(0), nil
+			}
+			switch axis {
+			case "x":
+				return py.Float(t.X), nil
+			case "y":
+				return py.Float(t.Y), nil
+			default:
+				return py.Float(0), nil
+			}
+		}, 0, "get_position(axis) -> float -- read position; axis: 'x' or 'y'")
+
+	m.Globals["get_timer"] = py.MustNewMethod("get_timer",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if t, ok := go_.GetComponent("timer").(*object.Timer); ok {
+				return py.Float(t.Remaining), nil
+			}
+			return py.Float(0), nil
+		}, 0, "get_timer() -> float -- read the Timer component's remaining seconds (0 if this entity has none)")
+
+	m.Globals["set_timer"] = py.MustNewMethod("set_timer",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "set_timer() requires 1 argument")
+			}
+			seconds, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			if t, ok := go_.GetComponent("timer").(*object.Timer); ok {
+				t.Remaining = seconds
+			}
+			return py.None, nil
+		}, 0, "set_timer(seconds) -- write the Timer component's remaining seconds")
+
+	m.Globals["destroy"] = py.MustNewMethod("destroy",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			go_.Active = false
+			return py.None, nil
+		}, 0, "destroy() -- deactivate this GameObject; it stops running/drawing but stays in the object pool")
+
+	m.Globals["set_facing"] = py.MustNewMethod("set_facing",
+		func(_ py.Object, args py.Tuple) (py.Object, error) {
+			if len(args) < 1 {
+				return nil, py.ExceptionNewf(py.TypeError, "set_facing() requires 1 argument")
+			}
+			dirX, err := pyToFloat64(args[0])
+			if err != nil {
+				return nil, err
+			}
+			if t := go_.Transform(); t != nil {
+				// Flip the sign only; preserve whatever magnitude the scene set (e.g. a sprite
+				// scaled up to match its physics body's size), so switching facing direction
+				// never resets a scaled sprite back down to its native pixel size.
+				mag := t.ScaleX
+				if mag < 0 {
+					mag = -mag
+				}
+				if mag == 0 {
+					mag = 1
+				}
+				if dirX < 0 {
+					t.ScaleX = -mag
+				} else {
+					t.ScaleX = mag
+				}
+			}
+			return py.None, nil
+		}, 0, "set_facing(dir_x) -- flips the sign of Transform.ScaleX (preserving its magnitude) based on the sign of dir_x; Sprite/Spritesheet/Block all mirror on ScaleX < 0")
 
 	return m
 }

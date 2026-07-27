@@ -14,14 +14,16 @@ const defaultPixelScale = 64.0
 
 // worldImpl implements physics.World using box2d-go.
 type worldImpl struct {
-	w    b2.World
-	scale float64
+	w          b2.World
+	scale      float64
+	shapeNames map[b2.ShapeId]string // maps shape id to GameObject name for contact reporting
 }
 
 // bodyImpl implements physics.Body.
 type bodyImpl struct {
 	b     b2.Body
 	scale float64
+	name  string // GameObject name, set by the physics system for contact reporting
 }
 
 // NewWorld creates a physics world using Box2D. Gravity is in game units per second² (Y positive = down).
@@ -34,7 +36,11 @@ func NewWorld(gravity physics.Vec2, pixelScale float64) physics.World {
 	// Box2D Y-up: our gravity (0, 98) pixels/s² down -> (0, -98/scale) m/s²
 	def.Gravity = b2.Vec2{X: float32(gravity.X / pixelScale), Y: float32(-gravity.Y / pixelScale)}
 	w := b2.CreateWorld(def)
-	return &worldImpl{w: w, scale: pixelScale}
+	return &worldImpl{
+		w:          w,
+		scale:      pixelScale,
+		shapeNames: make(map[b2.ShapeId]string),
+	}
 }
 
 func (w *worldImpl) gameToB2(pos physics.Vec2) b2.Vec2 {
@@ -54,6 +60,9 @@ func (w *worldImpl) b2ToGame(v b2.Vec2) physics.Vec2 {
 func (w *worldImpl) CreateBody(def physics.BodyDef) (physics.Body, error) {
 	bdef := b2.DefaultBodyDef()
 	bdef.Position = w.gameToB2(def.Position)
+	if def.FixedRotation {
+		bdef.FixedRotation = 1
+	}
 	switch def.Type {
 	case physics.BodyStatic:
 		bdef.Type1 = b2.StaticBody
@@ -66,6 +75,19 @@ func (w *worldImpl) CreateBody(def physics.BodyDef) (physics.Body, error) {
 	}
 	body := w.w.CreateBody(bdef)
 	shapeDef := b2.DefaultShapeDef()
+	// Box2D disables contact/sensor events per-shape by default; enable both so
+	// GetContactsNamesThisFrame() reliably reports touches.
+	shapeDef.EnableContactEvents = 1
+	shapeDef.EnableSensorEvents = 1
+	// Box2D's collision matrix never generates solid contacts (or collision response)
+	// between a kinematic body and a static body -- only kinematic-vs-dynamic and
+	// dynamic-vs-static do. Kinematic bodies in this engine are always driven directly by
+	// scripts via SetLinearVelocity and never receive real collision response from Box2D
+	// anyway, so marking their shape as a sensor costs nothing and is the only way to get
+	// overlap events (e.g. for ground detection) against static geometry.
+	if def.Type == physics.BodyKinematic {
+		shapeDef.IsSensor = 1
+	}
 	if def.Density > 0 {
 		shapeDef.Density = float32(def.Density)
 	} else {
@@ -179,4 +201,72 @@ func (b *bodyImpl) ApplyLinearImpulseToCenter(impulse physics.Vec2) {
 		Y: float32(-impulse.Y/b.scale) * mass,
 	}
 	b.b.ApplyLinearImpulseToCenter(imp, 1)
+}
+
+// DestroyBody removes body from the Box2D world and forgets any shape-name registrations for it
+// (so a later, unrelated body that happens to reuse the same shape id never inherits its name).
+func (w *worldImpl) DestroyBody(body physics.Body) {
+	b, ok := body.(*bodyImpl)
+	if !ok {
+		return
+	}
+	for _, shape := range b.b.GetShapes(nil) {
+		delete(w.shapeNames, shape.Id)
+	}
+	b.b.DestroyBody()
+}
+
+// RegisterBodyName associates a body with a GameObject name for contact reporting.
+// This registers all shapes in the body with the given name.
+func (w *worldImpl) RegisterBodyName(body physics.Body, name string) {
+	if b, ok := body.(*bodyImpl); ok {
+		b.name = name
+		// Register all shapes in this body with the name
+		shapes := b.b.GetShapes(nil)
+		for _, shape := range shapes {
+			w.shapeNames[shape.Id] = name
+		}
+	}
+}
+
+// GetContactsNamesThisFrame returns pairs of GameObject names that began and ended contact this frame.
+// Merges solid-body contact events (dynamic-vs-static, dynamic-vs-dynamic, ...) with sensor
+// overlap events (used for kinematic bodies -- see CreateBody) into a single named-pair result.
+func (w *worldImpl) GetContactsNamesThisFrame() (began, ended [][2]string) {
+	contacts := w.w.GetContactEvents()
+	for _, ev := range contacts.BeginEvents {
+		if pair, ok := w.namePair(ev.ShapeIdA, ev.ShapeIdB); ok {
+			began = append(began, pair)
+		}
+	}
+	for _, ev := range contacts.EndEvents {
+		if pair, ok := w.namePair(ev.ShapeIdA, ev.ShapeIdB); ok {
+			ended = append(ended, pair)
+		}
+	}
+
+	sensors := w.w.GetSensorEvents()
+	for _, ev := range sensors.BeginEvents {
+		if pair, ok := w.namePair(ev.SensorShapeId, ev.VisitorShapeId); ok {
+			began = append(began, pair)
+		}
+	}
+	for _, ev := range sensors.EndEvents {
+		if pair, ok := w.namePair(ev.SensorShapeId, ev.VisitorShapeId); ok {
+			ended = append(ended, pair)
+		}
+	}
+
+	return
+}
+
+// namePair resolves two shape ids to their registered GameObject names. Returns ok=false if
+// either shape is unregistered or both belong to the same GameObject (self-contact).
+func (w *worldImpl) namePair(idA, idB b2.ShapeId) ([2]string, bool) {
+	nameA := w.shapeNames[idA]
+	nameB := w.shapeNames[idB]
+	if nameA == "" || nameB == "" || nameA == nameB {
+		return [2]string{}, false
+	}
+	return [2]string{nameA, nameB}, true
 }

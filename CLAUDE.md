@@ -184,6 +184,28 @@ Scenes are defined in YAML files. A `SceneDef` is a list of `ObjectDef` entries,
 
 ---
 
+## Development Rules (for Metalslug Demo and beyond)
+
+### Python Scripts Only
+- **New scripts must use Python**, not Lua.
+- Existing Lua scripts (`scripts/lua/`) are legacy; do not update or maintain them.
+- Rationale: Reduce maintenance burden of identical implementations across two languages.
+
+### No Regression Rule
+- **Existing game behavior must not break** when adding new features.
+- Before committing a feature branch, test the golden path: movement (A/D), shooting (J), jumping (Space), and edge cases.
+- If a regression is discovered, fix it in the same commit before pushing.
+- Rationale: Silent behavior degradation is worse than incomplete features.
+
+### Unit Tests for Game Scripts
+- Python scripts in `games/<game>/scripts/python/` must have unit tests.
+- Test files live in the same directory: `player_controller_test.py`, `enemy_walk_test.py`, etc.
+- Tests should verify state transitions, velocity calculations, and event handling without running the engine.
+- Rationale: Scripts are game logic; they deserve the same test rigor as engine code.
+- See `games/metalslug_demo/scripts/python/*_test.py` for examples.
+
+---
+
 ## Known Issues / TODOs
 
 - **FIXME in `application/engine/engine.go`**: Scene registration is hardcoded (`"main_menu"`). It should be data-driven (tracked, not yet resolved).

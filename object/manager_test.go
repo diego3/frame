@@ -17,7 +17,11 @@ type fakeUpdaterDrawer struct {
 	drawCalls   int
 }
 
-func (f *fakeUpdaterDrawer) Type() string                   { return f.typeName }
+func (f *fakeUpdaterDrawer) Type() string { return f.typeName }
+func (f *fakeUpdaterDrawer) Clone() Component {
+	clone := *f
+	return &clone
+}
 func (f *fakeUpdaterDrawer) Update(dt float64)              { f.updateCalls++ }
 func (f *fakeUpdaterDrawer) Draw(*ebiten.Image, *Transform) { f.drawCalls++ }
 

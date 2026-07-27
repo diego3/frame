@@ -72,3 +72,16 @@ type ScriptEmitted struct {
 	Name    string
 	Payload map[string]interface{}
 }
+
+// BeginContact is emitted when two physics bodies start touching.
+// GameObjectNames are the names of the GameObjects whose bodies are in contact.
+type BeginContact struct {
+	GameObjectNameA string
+	GameObjectNameB string
+}
+
+// EndContact is emitted when two physics bodies stop touching.
+type EndContact struct {
+	GameObjectNameA string
+	GameObjectNameB string
+}

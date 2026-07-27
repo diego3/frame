@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"log"
 
+	"goengine/event"
+	"goengine/events"
 	"goengine/object"
 	"goengine/physics"
 
@@ -35,6 +37,7 @@ type PhysicsSystem struct {
 	world           physics.World
 	kinematicBodies map[string]kinematicEntry
 	staticDebug     []staticDebugInfo
+	emitter         event.Emitter
 }
 
 // NewPhysicsSystem creates a system that steps the given physics world and syncs named bodies to the object world.
@@ -42,7 +45,13 @@ func NewPhysicsSystem(world physics.World) *PhysicsSystem {
 	return &PhysicsSystem{
 		world:           world,
 		kinematicBodies: make(map[string]kinematicEntry),
+		emitter:         nil,
 	}
+}
+
+// SetEventEmitter registers the event emitter for contact events. Call after creation if contact events are needed.
+func (s *PhysicsSystem) SetEventEmitter(emitter event.Emitter) {
+	s.emitter = emitter
 }
 
 // CreateKinematicBody creates a kinematic body for the named object and adds a PhysicsBody component.
@@ -90,6 +99,9 @@ func (s *PhysicsSystem) CreateStaticBody(center physics.Vec2, width, height floa
 // Width/Height zero, uses the Block component's size if present.
 func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 	for _, obj := range objectWorld.Objects() {
+		if obj.IsPrototype {
+			continue
+		}
 		pb := obj.PhysicsBody()
 		if pb == nil || pb.Body != nil {
 			continue
@@ -136,15 +148,16 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 			Y: t.Y + h*0.5 + pb.OffsetY,
 		}
 		body, err := s.world.CreateBody(physics.BodyDef{
-			Position:    center,
-			Width:       w,
-			Height:      h,
-			Radius:      radius,
-			Type:        pb.BodyType,
-			Shape:       shape,
-			Density:     density,
-			Restitution: pb.Restitution,
-			Friction:    pb.Friction,
+			Position:      center,
+			Width:         w,
+			Height:        h,
+			Radius:        radius,
+			Type:          pb.BodyType,
+			Shape:         shape,
+			Density:       density,
+			Restitution:   pb.Restitution,
+			Friction:      pb.Friction,
+			FixedRotation: pb.FixedRotation,
 		})
 		if err != nil {
 			continue
@@ -152,6 +165,8 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 		pb.Body = body
 		pb.Width = w
 		pb.Height = h
+		// Register body name for contact reporting
+		s.world.RegisterBodyName(body, obj.Name)
 		if pb.BodyType == physics.BodyStatic {
 			s.staticDebug = append(s.staticDebug, staticDebugInfo{name: obj.Name, center: center, width: w, height: h})
 		} else {
@@ -159,6 +174,27 @@ func (s *PhysicsSystem) InitFromWorld(objectWorld *object.Manager) {
 				body: body, width: w, height: h,
 				offsetX: pb.OffsetX, offsetY: pb.OffsetY,
 			}
+		}
+	}
+}
+
+// DestroyBody permanently removes name's physics body from the world and stops tracking it, so
+// SyncToWorld/DrawDebug never touch a freed body again. Call when a GameObject with a physics
+// body is permanently deactivated (e.g. via a script's self.destroy()) -- Active=false alone only
+// stops it being drawn/updated; a dynamic body (unlike this engine's sensor-only kinematic
+// bodies) keeps generating real solid collision response forever otherwise, so e.g. a "dead"
+// falling-hazard sphere would remain an invisible obstacle blocking the player. No-op if name has
+// no tracked body (static bodies are scene-authored and never destroyed this way).
+func (s *PhysicsSystem) DestroyBody(objectWorld *object.Manager, name string) {
+	entry, ok := s.kinematicBodies[name]
+	if !ok {
+		return
+	}
+	s.world.DestroyBody(entry.body)
+	delete(s.kinematicBodies, name)
+	if obj := objectWorld.Find(name); obj != nil {
+		if pb := obj.PhysicsBody(); pb != nil {
+			pb.Body = nil
 		}
 	}
 }
@@ -216,9 +252,29 @@ func (s *PhysicsSystem) DrawDebug(screen *ebiten.Image, objectWorld *object.Mana
 	}
 }
 
-// Step advances the physics simulation by dt seconds.
+// Step advances the physics simulation by dt seconds and emits contact events.
 func (s *PhysicsSystem) Step(dt float64) {
 	s.world.Step(dt)
+	if s.emitter != nil {
+		s.emitContactEvents()
+	}
+}
+
+// emitContactEvents emits BeginContact and EndContact events based on physics contacts this frame.
+func (s *PhysicsSystem) emitContactEvents() {
+	began, ended := s.world.GetContactsNamesThisFrame()
+	for _, pair := range began {
+		s.emitter.Emit(events.BeginContact{
+			GameObjectNameA: pair[0],
+			GameObjectNameB: pair[1],
+		})
+	}
+	for _, pair := range ended {
+		s.emitter.Emit(events.EndContact{
+			GameObjectNameA: pair[0],
+			GameObjectNameB: pair[1],
+		})
+	}
 }
 
 // SyncToWorld copies kinematic body positions (center) to the corresponding GameObjects' Transforms (top-left).

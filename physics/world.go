@@ -26,6 +26,12 @@ type Body interface {
 	ApplyLinearImpulseToCenter(impulse Vec2)
 }
 
+// ContactEvent represents a contact between two GameObjects (for callback purposes).
+type ContactEvent struct {
+	GameObjectNameA string
+	GameObjectNameB string
+}
+
 // World runs the physics simulation. Create bodies, step each frame, then read positions back.
 // No type from any concrete physics library appears here.
 type World interface {
@@ -33,4 +39,13 @@ type World interface {
 	CreateBody(def BodyDef) (Body, error)
 	// Step advances the simulation by dt (seconds). Call once per frame.
 	Step(dt float64)
+	// DestroyBody permanently removes body from the simulation (and any name registered for it
+	// via RegisterBodyName). After this call, body must not be used again.
+	DestroyBody(body Body)
+	// RegisterBodyName registers a GameObject name for a body (for contact reporting).
+	// Call after creating a body if you want contact events.
+	RegisterBodyName(body Body, name string)
+	// GetContactsNamesThisFrame returns pairs of GameObject names that began/ended contact this frame.
+	// Only works if RegisterBodyName was called for the bodies.
+	GetContactsNamesThisFrame() (began, ended [][2]string)
 }
