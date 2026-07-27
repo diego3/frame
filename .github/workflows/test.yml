@@ -41,3 +41,11 @@ jobs:
       # needs a display at process start, not just for rendering.
       - name: go test
         run: xvfb-run -a go test ./...
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Python script tests
+        run: python3 -m unittest discover -s games/metalslug_demo/scripts/python/tests -p '*_test.py' -v
