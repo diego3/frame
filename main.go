@@ -13,7 +13,12 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("games/demo1/config.yaml")
+	configPath := "games/demo1/config.yaml"
+	if len(os.Args) > 1 {
+		configPath = os.Args[1]
+	}
+
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatal("config: ", err)
 	}

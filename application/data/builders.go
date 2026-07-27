@@ -237,7 +237,7 @@ func buildIntentBuffer(_ map[string]interface{}, _ ports.ImageLoader) (object.Co
 // buildProjectile builds a Projectile component. Params are typically all left at 0 for a
 // "projectile_prototype" template (spawnProjectile overwrites them on every clone), but are parsed
 // for consistency and in case a scene ever places a live projectile directly in its YAML.
-func buildProjectile(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildProjectile(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	velX, _ := floatParam(params, "vel_x")
 	velY, _ := floatParam(params, "vel_y")
 	damage, _ := floatParam(params, "damage")
@@ -245,7 +245,7 @@ func buildProjectile(params map[string]interface{}, _ ports.AssetLoader) (object
 }
 
 // buildEnemy builds an Enemy component. hp defaults to 1 (dies on first hit) if unset or <= 0.
-func buildEnemy(params map[string]interface{}, _ ports.AssetLoader) (object.Component, error) {
+func buildEnemy(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {
 	hp, _ := floatParam(params, "hp")
 	if hp <= 0 {
 		hp = 1
