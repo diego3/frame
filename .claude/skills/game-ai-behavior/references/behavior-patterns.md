@@ -1,9 +1,9 @@
 # Behavior pattern sketches
 
-Worked examples for `game-ai-behavior`'s three core concepts, sized for this engine's actual
-script API (`script/python_engine.go`) and component set (`object/`). None of this code exists
-in the repo yet — these are sketches for when a concrete `ideas.md`/design TODO needs them, not
-a description of current behavior.
+Worked examples for `game-ai-behavior`'s core concepts, sized for this engine's actual script API
+(`script/python_engine.go`) and component set (`object/`). None of this code exists in the repo
+yet — these are sketches for when a concrete `ideas.md`/design TODO needs them, not a description
+of current behavior.
 
 ## 1. Explicit FSM table (graduating from `enemy_bomber.py`'s informal 2-state version)
 
@@ -120,3 +120,118 @@ geometry at scene load rather than a fine per-pixel grid:
 Do not build this until a concrete TODO needs actual navigation around obstacles.
 `enemy_walk.py`'s fixed-bounds patrol has no pathfinding and is the right level of complexity
 for "walk along this platform."
+
+**Time-slicing a search that gets expensive.** If a level ever grows enough graph nodes that a
+full A* search in one frame is measurable (unlikely at this game's scale, but the technique is
+cheap insurance): drive the search from a `process.Process` (`process/`) instead of a plain
+function call — expand a bounded number of open-set nodes per `Update(dt)`, and `Succeed()` once
+the goal is reached or the open set is exhausted. That's `process.Manager`'s cooperative-
+multitasking model (Ch. 4), already built and unwired (see `game-architecture`'s §4), applied to
+a search instead of a timer.
+
+## 4. Steering behaviors (`vec2`-based)
+
+Seek (move toward a point), Flee (move away), and Arrive (Seek that decelerates on approach
+instead of overshooting) are all the same shape: compute a *desired* velocity, steer the
+*current* velocity toward it by a bounded acceleration.
+
+```python
+# Sketch: blend Seek-toward-player with Flee-if-too-close, added to enemy_walk.py-style
+# movement. Uses only self.get_position/self.get_velocity/self.set_velocity (hypothetical —
+# actual script API surface for velocity control may need a small, focused addition; position
+# and facing already exist).
+MAX_SPEED = 120.0       # game units/s
+MAX_ACCEL = 300.0       # game units/s^2
+FLEE_RADIUS = 40.0      # too close: back off instead of approaching
+ARRIVE_RADIUS = 150.0   # start slowing down within this distance
+
+def _seek(to_x, to_y, from_x, from_y, slow_radius=None):
+    dx, dy = to_x - from_x, to_y - from_y
+    dist = (dx * dx + dy * dy) ** 0.5
+    if dist < 1e-4:
+        return 0.0, 0.0
+    speed = MAX_SPEED
+    if slow_radius is not None and dist < slow_radius:
+        speed = MAX_SPEED * (dist / slow_radius)  # Arrive: linear falloff near the target
+    return (dx / dist) * speed, (dy / dist) * speed
+
+def update(dt):
+    px, py = self.get_position("x"), self.get_position("y")
+    tx = engine.get_entity_position("player", "x")
+    ty = engine.get_entity_position("player", "y")
+    dist = ((tx - px) ** 2 + (ty - py) ** 2) ** 0.5
+
+    if dist < FLEE_RADIUS:
+        desired_x, desired_y = _seek(px, py, tx, ty)  # Flee is just Seek with source/target swapped
+    else:
+        desired_x, desired_y = _seek(tx, ty, px, py, slow_radius=ARRIVE_RADIUS)
+
+    vx, vy = self.get_velocity()
+    # Steer current velocity toward desired, clamped to MAX_ACCEL — this is the "steering" part;
+    # snapping straight to desired_x/y would look robotic, the same flatness this replaces.
+    ax, ay = desired_x - vx, desired_y - vy
+    accel_mag = (ax * ax + ay * ay) ** 0.5
+    if accel_mag > MAX_ACCEL:
+        ax, ay = ax / accel_mag * MAX_ACCEL, ay / accel_mag * MAX_ACCEL
+    self.set_velocity(vx + ax * dt, vy + ay * dt)
+    self.set_facing(1 if vx >= 0 else -1)
+```
+
+Combining more than one behavior (e.g. Seek-the-player + a mild Avoid-the-platform-edge) is a
+weighted sum of the desired vectors before the steer-toward-desired step — don't reach for
+priority-dithering or truncated-sum schemes built for crowds; a straight weighted average is
+plenty at 1-3 enemies on screen.
+
+## 5. Perception gate (no sensory omnipotence)
+
+The minimal version is a distance check before the script *acts* on player position — it doesn't
+need to be more than that unless a design explicitly calls for stealth/line-of-sight puzzles:
+
+```python
+# Sketch: enemy only "notices" the player within SIGHT_RADIUS, and forgets shortly after losing
+# them (a tiny bit of "sensory memory" instead of instantly reacting/forgetting every frame).
+SIGHT_RADIUS = 220.0
+FORGET_AFTER = 1.5  # seconds of no line-of-sight before giving up
+
+_aware = False
+_time_since_seen = 0.0
+
+def update(dt):
+    global _aware, _time_since_seen
+
+    px, py = self.get_position("x"), self.get_position("y")
+    tx = engine.get_entity_position("player", "x")
+    ty = engine.get_entity_position("player", "y")
+    dist = ((tx - px) ** 2 + (ty - py) ** 2) ** 0.5
+
+    if dist <= SIGHT_RADIUS:
+        _aware = True
+        _time_since_seen = 0.0
+    elif _aware:
+        _time_since_seen += dt
+        if _time_since_seen >= FORGET_AFTER:
+            _aware = False
+
+    if not _aware:
+        return  # stay idle/patrol — no reaction to a player it hasn't perceived
+
+    # ... react to tx, ty as normal (attack, steer toward, etc.) ...
+```
+
+For true line-of-sight (not just distance) — e.g. a wall should block detection, not just
+range — an AABB raycast against the level's static platform bodies is enough; this codebase
+already has AABB overlap testing (`scene.AABB`/`scene.AABBOverlap`,
+`view/scene/world_scene.go`) to build a simple ray-vs-AABB check on top of, no new collision
+system needed. Only add that if a concrete design (an enemy meant to be snuck past, not just
+approached) needs it — the plain distance check above covers "doesn't react from across the
+level," which is most of what "no sensory omnipotence" actually buys you here.
+
+**AI Regulators (update-frequency throttling).** Not every enemy needs its full decision logic
+re-evaluated every single frame — `enemy_bomber.py`'s cooldown check is already effectively this
+(only the countdown itself runs every frame; the actual "decide to fire" branch only does
+anything once every `FIRE_INTERVAL` seconds). Generalizing that idea to perception/decision
+logic that's more expensive than a cooldown float (e.g. the line-of-sight raycast above) is as
+simple as a frame-counter modulo — run the expensive check every N frames, reuse the last result
+otherwise — no dedicated "regulator" abstraction needed at this game's enemy count. Movement
+(steering) and cheap collision still run every frame; it's specifically the *expensive,
+infrequently-changing* decisions that benefit from throttling.
