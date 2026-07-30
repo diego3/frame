@@ -7,12 +7,12 @@ import (
 	"log"
 	"os"
 
-	"goengine/application/config"
-	"goengine/application/engine"
-	"goengine/application/game"
+	"goengine/frameengine/application/config"
+	"goengine/frameengine/application/engine"
+	"goengine/frameengine/application/game"
+	"goengine/frameengine/ports"
+	"goengine/frameengine/view/scene"
 	metalslug "goengine/games/metalslug_demo"
-	"goengine/ports"
-	"goengine/view/scene"
 )
 
 // sceneFactories are this application's scene types, keyed by the name used in a game's
