@@ -12,40 +12,54 @@
 - Data-driven scene loading from YAML
 - A central type-safe event bus
 - Component-based game objects
-- Lua 5.1 scripting via `gopher-lua`
+- Lua 5.1 scripting via `gopher-lua`, and Python 3.4 scripting via `gpython` (the required backend for new game scripts)
 - Box2D physics integration
 
-The `games/demo1/` directory contains a working example game that exercises all major engine systems.
+`games/demo1/` and `games/metalslug_demo/` are working example games exercising all major engine systems — `metalslug_demo` is the actively developed one and the default game `main.go` runs.
 
 ---
 
 ## Repository Structure
 
+The engine (`frameengine/`) and the application layer (`main.go`, `games/`) are split into
+separate trees within this one Go module, in preparation for eventually extracting `frameengine/`
+into its own importable module (see `docs/frame_engine_migration_plan.md`). **`frameengine/` must
+never import from `goengine/games/...`** — dependencies are one-directional (games depend on the
+engine, never the reverse); this is checked by grep in code review, not enforced by tooling.
+
 ```
 .
-├── main.go                     # Entry point: loads config, creates engine, runs game
+├── main.go                     # Entry point: loads config, wires scene factories, runs game
+├── main_wasm.go                # WASM entry point (demo1 only)
 ├── go.mod / go.sum             # Go 1.24.0 module (module name: goengine)
-├── application/
-│   ├── config/                 # YAML config loading (window, assets, physics, input)
-│   ├── engine/                 # Dependency-injection bootstrap (wires all systems)
-│   ├── game/                   # Game loop: implements ebiten.Game (Update/Draw/Layout)
-│   └── data/                   # Data-driven scene loading (YAML → GameObjects)
-├── event/                      # Central event bus + all event type definitions
-├── object/                     # GameObject + Component system
-├── physics/                    # Physics interfaces
-│   └── box2d/                  # Box2D wrapper (game-unit abstraction)
-├── ports/                      # Shared interface definitions (AssetLoader, UIRoot, Scene)
-├── resource/                   # Asset caching/loading manager
-├── script/                     # Lua VM integration
-├── view/
-│   ├── scene/                  # SceneManager + scene implementations (MainMenu)
-│   ├── ui/                     # UI widgets (Container, Button)
-│   └── input/                  # Input adapter (key bindings → intent events)
+├── frameengine/                # The engine — no knowledge of any specific game
+│   ├── application/
+│   │   ├── config/             # YAML config loading (window, assets, physics, input)
+│   │   ├── engine/             # Dependency-injection bootstrap (wires all systems)
+│   │   ├── game/                # Game loop: implements ebiten.Game (Update/Draw/Layout)
+│   │   └── data/                # Data-driven scene loading (YAML → GameObjects)
+│   ├── event/                   # Central event bus + all event type definitions
+│   ├── events/                  # Event type definitions (intent/state events)
+│   ├── object/                  # GameObject + Component system
+│   ├── physics/                 # Physics interfaces
+│   │   └── box2d/               # Box2D wrapper (game-unit abstraction)
+│   ├── ports/                   # Shared interface definitions (AssetLoader, UIRoot, Scene)
+│   ├── process/                 # Process manager (Game Coding Complete Ch. 4 timed behavior)
+│   ├── resource/                # Asset caching/loading manager
+│   ├── script/                  # Lua + Python (gpython) VM integration
+│   └── view/
+│       ├── scene/               # SceneManager + the generic WorldScene scene type
+│       ├── ui/                  # UI widgets (Container, Button)
+│       ├── camera/              # Follow-camera
+│       └── input/               # Input adapter (key bindings → intent events)
 ├── logic/                      # Placeholder for game rule logic
-├── games/
-│   └── demo1/                  # Example game: config.yaml, scenes/, scripts/, assets/
+├── games/                      # Application layer: each game is a frameengine consumer
+│   ├── demo1/                   # Example game (Lua scripts): config.yaml, scenes/, scripts/, assets/
+│   └── metalslug_demo/           # Metal Slug demo (Python scripts); scene.go embeds
+│                                 # *scene.WorldScene and adds only this demo's own gameplay
+│                                 # rules (shooting, hit detection) — see "Adding a new game" below
 ├── docs/
-│   ├── adr/                    # Architecture Decision Records (ADR-001 through ADR-008)
+│   ├── adr/                    # Architecture Decision Records (ADR-001 through ADR-011)
 │   └── tdr/                    # Technical Debt Records
 └── scripts/                    # Sample Lua scripts
 ```
@@ -58,11 +72,17 @@ The `games/demo1/` directory contains a working example game that exercises all 
 # Build
 go build ./...
 
-# Run the demo game
+# Run the default demo game (games/metalslug_demo/config.yaml)
 go run main.go
+
+# Run a specific game's config
+go run main.go games/demo1/config.yaml
 ```
 
-The engine loads its configuration from `games/demo1/config.yaml` (hardcoded in `main.go`).
+`main.go` defaults to `games/metalslug_demo/config.yaml` but accepts a config path as its first
+argument. `main.go` also owns the `sceneFactories` map (scene type name → constructor) passed to
+`engine.New` — a new game's scene type must be registered there (or in `main_wasm.go` for the
+WASM build) to be usable from its `config.yaml`'s `scenes:` map.
 
 ---
 
@@ -77,8 +97,8 @@ go test -race ./...
 ```
 
 Test files live next to the source they test (`*_test.go`). Current test coverage:
-- `event/bus_test.go` — event bus delivery, ordering, deferred queue, concurrency
-- `script/vm_test.go` — Lua VM execution, Go callbacks, error handling
+- `frameengine/event/bus_test.go` — event bus delivery, ordering, deferred queue, concurrency
+- `frameengine/script/*_test.go` — Lua and Python VM execution, Go callbacks, error handling
 
 ### Testing conventions
 - **Table-driven tests** with `t.Run()` subtests are preferred.
@@ -103,7 +123,7 @@ View Layer          │ input (intent), scenes, UI, rendering
 
 Layers communicate **only via the event bus** — no direct imports across non-adjacent layers.
 
-### Event Bus (`event/`)
+### Event Bus (`frameengine/event/`)
 
 - Central, synchronous, type-safe dispatch.
 - Generic API: `event.Subscribe[T](bus, handler func(T))`, `event.Emit(bus, value)`
@@ -113,31 +133,41 @@ Layers communicate **only via the event bus** — no direct imports across non-a
 **Intent events** (View → Logic): `SceneChangeRequested`, `MoveRequested`, `DebugOverlayToggled`, `QuitRequested`
 **State events** (Logic → View): `SceneChanged`, `GameObjectCreated/Destroyed`, `ComponentAdded/Removed`, `ScriptEmitted`
 
-### GameObject & Components (`object/`)
+### GameObject & Components (`frameengine/object/`)
 
 - `GameObject`: container with ID, Name, Active flag, and a `map[string]Component`.
 - `Component` interface: `Type() string`
 - Optional component interfaces: `Updater` (`Update(dt float64)`), `Drawer` (`Draw(*ebiten.Image)`)
 - Built-in component types: `Transform`, `Sprite`, `Spritesheet`, `Animator`, `PhysicsBody`, `Script`, `Block`, `Ball`, `IntentBuffer`
 
-### Data-Driven Scenes (`application/data/`, `games/demo1/scenes/`)
+### Data-Driven Scenes (`frameengine/application/data/`, `games/demo1/scenes/`)
 
 Scenes are defined in YAML files. A `SceneDef` is a list of `ObjectDef` entries, each with a name and a map of component definitions. Component builders are registered by type name string and convert raw YAML maps into typed component structs.
 
-### Lua Scripting (`script/`)
+The engine's one generic scene type is `scene.WorldScene` (`frameengine/view/scene/world_scene.go`
++ `spawn.go`): script/physics/camera wiring, the Prototype-clone `spawnEntity` mechanism, and
+projectile movement. A game that needs its own gameplay rules (hit detection, a custom spawn
+convention, ...) embeds `*scene.WorldScene` in its own `ports.Scene` implementation rather than
+adding that logic to `WorldScene` itself — see `games/metalslug_demo/scene.go` for the pattern
+(embeds `WorldScene`, adds only `spawnProjectile` and `updateHitDetection`), and
+`docs/frame_engine_migration_plan.md` for why this split exists.
 
-- Pure Go VM (`gopher-lua` — Lua 5.1).
+### Scripting (`frameengine/script/`)
+
+- Two backends: pure-Go Lua 5.1 (`gopher-lua`) and pure-Go Python 3.4 (`gpython`).
+- **New game scripts must use Python** — see "Development Rules" below; Lua is legacy, kept only
+  for `games/demo1`.
 - Scripts are attached to `GameObject`s as a `Script` component.
-- Engine functions registered in Lua: `play_sound`, `switch_scene`, `quit`, `emit`
-- Lua entry points called per-frame/per-event: `update(dt)`, `on_event(name, payload)`
+- Engine functions registered in both backends: `play_sound`, `switch_scene`, `quit`, `emit`
+- Script entry points called per-frame/per-event: `update(dt)`, `on_event(name, payload)`
 
-### Physics (`physics/box2d/`)
+### Physics (`frameengine/physics/box2d/`)
 
 - Box2D wrapped with a game-unit abstraction (pixels ↔ Box2D meters via `PixelScale`).
 - `BodyDef` for creating bodies (static/kinematic/dynamic, shape, mass, friction, restitution).
 - `World.Step(dt)` called once per frame in the physics system.
 
-### Input (`view/input/`)
+### Input (`frameengine/view/input/`)
 
 - `Manager`: registry of action → key bindings (loaded from `config.yaml`).
 - `Adapter`: polls each frame, emits intent events (`MoveRequested`, `ScriptEmitted`, etc.).
@@ -158,7 +188,7 @@ Scenes are defined in YAML files. A `SceneDef` is a list of `ObjectDef` entries,
 
 ### Interfaces
 - Keep interfaces small (1–3 methods).
-- Define interfaces in the **consumer** package or in `ports/` for shared contracts.
+- Define interfaces in the **consumer** package or in `frameengine/ports/` for shared contracts.
 - Accept interfaces, return concrete structs.
 
 ### Error Handling
@@ -208,7 +238,10 @@ Scenes are defined in YAML files. A `SceneDef` is a list of `ObjectDef` entries,
 
 ## Known Issues / TODOs
 
-- **FIXME in `application/engine/engine.go`**: Scene registration is hardcoded (`"main_menu"`). It should be data-driven (tracked, not yet resolved).
+- Scene registration is data-driven: each application (`main.go`, `main_wasm.go`) builds its own
+  `sceneFactories map[string]scene.SceneFactory` and passes it to `engine.New`; each game's
+  `config.yaml` declares `scenes: {id: factory-name}`. The engine itself has no hardcoded scene
+  names (this was previously a FIXME; resolved as part of the `frameengine/` consolidation).
 - Search for `// TODO`, `// FIXME`, `// HACK` comments in the codebase to find unprioritized debt items.
 
 ---
@@ -217,12 +250,12 @@ Scenes are defined in YAML files. A `SceneDef` is a list of `ObjectDef` entries,
 
 | Feature | Where to start |
 |---|---|
-| New scene | Add YAML in `games/<game>/scenes/`, register in `view/scene/` |
-| New component type | Add struct in `object/`, register builder in `application/data/` |
-| New intent/state event | Add type in `event/events.go`, subscribe in the appropriate layer |
-| New engine API for Lua | Register function in `script/vm.go` via `RegisterEngine` |
+| New scene | Add YAML in `games/<game>/scenes/`; use `scene.WorldScene` directly if no custom rules are needed, or embed it in a game-specific `ports.Scene` (see `games/metalslug_demo/scene.go`) if they are |
+| New component type | Add struct in `frameengine/object/`, register builder in `frameengine/application/data/` |
+| New intent/state event | Add type in `frameengine/events/events.go`, subscribe in the appropriate layer |
+| New engine API for scripts | Register function in `frameengine/script/` (both Lua and Python backends) |
 | New input action | Add key binding in `config.yaml` under `input.keys` |
-| New game | Create `games/<name>/` with `config.yaml`, scenes, scripts, assets |
+| New game | Create `games/<name>/` with `config.yaml`, scenes, Python scripts, assets; register its scene factory in `main.go` (or `main_wasm.go`) |
 
 ---
 

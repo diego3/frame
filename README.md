@@ -15,12 +15,10 @@ A modular 2D game engine written in Go, built on [Ebitengine](https://ebitengine
 
 ## Demo
 
-The bundled demo (`games/demo1`) features a Knight platformer:
+Two example games exercise the engine:
 
-- Move: `A` / `D`
-- Dash: `Shift`
-- Attack: `J` / `K`
-- Debug overlay: `F3`
+- **`games/demo1`** — a Knight platformer (Lua scripts): Move `A`/`D`, Dash `Shift`, Attack `J`/`K`, Debug overlay `F3`
+- **`games/metalslug_demo`** — a Metal Slug-style run-and-gun demo (Python scripts), the actively developed one and the default game `main.go` runs: Move `A`/`D`, Jump `Space`, Shoot `J`, Debug overlay `F3`
 
 ## Getting Started
 
@@ -29,34 +27,49 @@ The bundled demo (`games/demo1`) features a Knight platformer:
 ```bash
 git clone https://github.com/diego3/frame.git
 cd frame
-go run . games/demo1/config.yaml
+go run .                          # runs games/metalslug_demo (the default)
+go run . games/demo1/config.yaml  # or pick a specific game's config
 ```
 
 ## Project Structure
 
+The engine (`frameengine/`) and the application layer (`main.go`, `games/`) are split into
+separate trees, in preparation for eventually extracting `frameengine/` into its own importable
+Go module (see [`docs/frame_engine_migration_plan.md`](docs/frame_engine_migration_plan.md)).
+`frameengine/` has no knowledge of any specific game; each game under `games/` depends on it, never
+the reverse.
+
 ```
 frame/
-├── main.go                        # Entry point
-├── application/
-│   ├── config/                    # Config loader (YAML)
-│   ├── data/                      # Scene YAML loader + component builders
-│   ├── engine/                    # Engine bootstrap (window, signal handling)
-│   └── game/                      # Game orchestrator (scene manager, input, loop)
-├── object/                        # GameObject and all components
-├── physics/                       # Physics interfaces + Box2D implementation
-├── script/                        # Scripting backends (Lua via gopher-lua)
-├── event/                         # Type-safe event bus
-├── ports/                         # Core interfaces (Scene, AssetLoader, UIRoot)
-├── resource/                      # Asset loader (images, fonts, audio)
-├── view/
-│   ├── input/                     # Keyboard input → intent events
-│   ├── scene/                     # Scene implementations (MainMenu, PhysicsSystem)
-│   └── ui/                        # UI widgets (Button, Container)
-└── games/
-    └── demo1/                     # Demo game
-        ├── config.yaml            # Window, physics, input, asset config
-        ├── scenes/main_menu.yaml  # Data-driven scene definition
-        └── scripts/               # Lua game logic scripts
+├── main.go                              # Entry point (defaults to games/metalslug_demo)
+├── main_wasm.go                         # WASM entry point (demo1 only)
+├── frameengine/                         # The engine
+│   ├── application/
+│   │   ├── config/                      # Config loader (YAML)
+│   │   ├── data/                        # Scene YAML loader + component builders
+│   │   ├── engine/                      # Engine bootstrap (window, signal handling)
+│   │   └── game/                        # Game orchestrator (scene manager, input, loop)
+│   ├── object/                          # GameObject and all components
+│   ├── physics/                         # Physics interfaces + Box2D implementation
+│   ├── script/                          # Scripting backends (Lua via gopher-lua, Python via gpython)
+│   ├── event/ + events/                 # Type-safe event bus + event type definitions
+│   ├── ports/                           # Core interfaces (Scene, AssetLoader, UIRoot)
+│   ├── process/                         # Process manager (timed behavior)
+│   ├── resource/                        # Asset loader (images, fonts, audio)
+│   └── view/
+│       ├── input/                       # Keyboard input → intent events
+│       ├── scene/                       # The generic WorldScene scene type + PhysicsSystem
+│       ├── camera/                      # Follow-camera
+│       └── ui/                          # UI widgets (Button, Container)
+└── games/                                # Application layer: each game is a frameengine consumer
+    ├── demo1/                            # Demo game (Lua scripts)
+    │   ├── config.yaml                   # Window, physics, input, asset config
+    │   ├── scenes/main_menu.yaml         # Data-driven scene definition
+    │   └── scripts/                      # Lua game logic scripts
+    └── metalslug_demo/                   # Metal Slug demo (Python scripts)
+        ├── config.yaml
+        ├── scene.go                       # Embeds *scene.WorldScene, adds this demo's own rules
+        └── scripts/python/                # Python game logic scripts
 ```
 
 ## Data-Driven Scenes
@@ -150,7 +163,8 @@ Design decisions are documented as ADRs in [`docs/adr/`](docs/adr/):
 | Package | Purpose |
 |---------|---------|
 | [ebitengine/ebiten](https://github.com/hajimehoshi/ebiten) | 2D rendering, window, audio |
-| [yuin/gopher-lua](https://github.com/yuin/gopher-lua) | Pure-Go Lua 5.1 VM |
+| [yuin/gopher-lua](https://github.com/yuin/gopher-lua) | Pure-Go Lua 5.1 VM (legacy scripting backend) |
+| [go-python/gpython](https://github.com/go-python/gpython) | Pure-Go Python 3.4 VM (scripting backend for new games) |
 | [oliverbestmann/box2d-go](https://github.com/oliverbestmann/box2d-go) | Box2D physics |
 | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | YAML config parsing |
 
