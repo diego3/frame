@@ -133,6 +133,38 @@ func TestBus_MethodSubscriber(t *testing.T) {
 	}
 }
 
+func TestBus_TakeEventCount(t *testing.T) {
+	bus := NewBus()
+	type eventA struct{}
+	type eventB struct{}
+
+	assert.Equal(t, uint64(0), bus.TakeEventCount(), "no events emitted yet")
+
+	Emit(bus, eventA{})
+	Emit(bus, eventB{})
+	Emit(bus, eventA{})
+
+	assert.Equal(t, uint64(3), bus.TakeEventCount(), "one count per delivered event, regardless of type")
+	assert.Equal(t, uint64(0), bus.TakeEventCount(), "count resets after being taken")
+}
+
+func TestBus_TakeEventCount_countsDeferredQueueEvents(t *testing.T) {
+	bus := NewBus()
+	type eventA struct{}
+	type eventB struct{}
+
+	// eventA's handler emits eventB from inside delivery -- deferred-queue delivery (see
+	// TestBus_DeferredQueueOrdersNestedEmits) must count too, not just the top-level Emit call.
+	Subscribe(bus, func(ev eventA) {
+		Emit(bus, eventB{})
+	})
+	Subscribe(bus, func(ev eventB) {})
+
+	Emit(bus, eventA{})
+
+	assert.Equal(t, uint64(2), bus.TakeEventCount(), "both eventA and the nested eventB should count")
+}
+
 // TestBus_ConcurrentEmitAndSubscribe exercises the RWMutex on Bus by emitting events from many
 // goroutines while additional subscribers are being added. When run with -race, this should not
 // report data races, and the always-present handler should be called once per Emit.

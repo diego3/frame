@@ -1,12 +1,14 @@
 // Package camera provides a simple 2D follow camera: a world-space offset clamped to level
-// bounds so the viewport never shows space outside the level. It has no rendering dependency —
-// callers translate their draw target by (X, Y) themselves (see view/scene.WorldScene.Draw).
+// bounds so the viewport never shows space outside the level, plus an unclamped shake offset
+// (see CameraShake) for transient effects. It has no rendering dependency — callers translate
+// their draw target by (X+ShakeX, Y+ShakeY) themselves (see view/scene.WorldScene.Draw).
 package camera
 
 // Camera holds a world-space top-left offset for the visible viewport, plus the viewport and
 // level sizes needed to clamp that offset.
 type Camera struct {
 	X, Y                          float64
+	ShakeX, ShakeY                float64 // transient offset added on top of X/Y, e.g. by CameraShake; not clamped to level bounds
 	ViewportWidth, ViewportHeight float64
 	LevelWidth, LevelHeight       float64
 }

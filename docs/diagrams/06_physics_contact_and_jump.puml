@@ -1,0 +1,63 @@
+@startuml 06_physics_contact_and_jump
+title Gameplay Example — landing on a platform enables jumping
+
+autonumber
+
+actor Player
+participant "input.Adapter" as InputAdapter
+participant "event.Bus" as Bus
+participant "Scene\n(WorldScene)" as Scene
+participant "script.Engine\n(Python VM)" as VM
+participant "player_controller.py" as PlayerScript
+participant "PhysicsSystem" as Physics
+
+== The jump request is latched, but only honored if already grounded ==
+
+Player -> InputAdapter : presses Space (bound to action "jump")
+InputAdapter -> Bus : Emit(ScriptEmitted{Name: "JumpRequested"})
+Bus -> Scene : ScriptEmitted handler
+Scene -> VM : CallOnEvent("JumpRequested", nil)
+VM -> PlayerScript : on_event("JumpRequested", payload)
+alt is_grounded
+  PlayerScript -> PlayerScript : pending_jump = True
+else airborne
+  PlayerScript -> PlayerScript : ignored -- not queued for landing\n(queuing was tried and reverted: it caused\nan unrequested jump the moment the player landed)
+end
+
+== Meanwhile, physics detects the player landing ==
+
+Scene -> Physics : Step(dt)
+Physics -> Physics : box2d.World.Step(dt)\n// player's dynamic body contacts\n// a static platform body
+Physics -> Bus : Emit(BeginContact{"player", "platform_2"})
+Bus -> Scene : handler
+Scene -> VM : CallOnEvent("BeginContact", {A: "player", B: "platform_2"})
+VM -> PlayerScript : on_event("BeginContact", payload)
+PlayerScript -> PlayerScript : _touching["platform_2"] = True\nis_grounded = True
+note right
+  is_grounded is derived from a {name: touching?} dict over
+  GROUND_OBJECTS, not a bool or counter -- the player can touch
+  more than one ground object at once (e.g. brushing a crate
+  while standing on the ground), and a bool/counter both had
+  reproducible bugs where jumping silently stopped working.
+  See the script's own module docstring for the full reasoning.
+end note
+
+== Next updateScripts(dt): the jump actually happens ==
+
+Scene -> VM : CallScriptUpdate("player_controller.py", "update", playerGO, dt)
+VM -> PlayerScript : update(dt)
+alt pending_jump and is_grounded
+  PlayerScript -> PlayerScript : self.apply_linear_impulse_to_center(0, -JUMP_IMPULSE)
+  PlayerScript -> PlayerScript : self.reset_animation("jump")\npending_jump = False
+else
+  PlayerScript -> PlayerScript : nothing to do this frame
+end
+
+note over Physics, PlayerScript
+  Later, when the player leaves the platform, PhysicsSystem emits
+  EndContact the same way, and on_event flips
+  _touching["platform_2"] = False, re-deriving is_grounded from
+  whatever ground objects (if any) are still touched.
+end note
+
+@enduml

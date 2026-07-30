@@ -16,7 +16,10 @@
 #   explosion_effect.py) at this sphere's position the moment it explodes, via the same generic
 #   Prototype-clone mechanism game_manager.py uses to spawn spheres in the first place (see
 #   MainMenu.spawnEntity). Deciding that an explosion happens, and where, is this script's rule to
-#   make -- MainMenu only knows how to clone a named prototype, not why.
+#   make -- MainMenu only knows how to clone a named prototype, not why. The same moment also
+#   emits "ShakeCamera" (WorldScene.shakeCamera) -- since this script is the one place that decides
+#   "a sphere just exploded", regardless of whether it got here as the falling-sphere hazard
+#   (game_manager.py) or an enemy_bomber.py bomb, both trigger the shake for free.
 #
 # Entity API (injected as module global "self" before each update call):
 #   self.get_timer() -> float
@@ -26,6 +29,9 @@
 #   self.destroy() -- deactivates the GameObject (removed from Update/Draw)
 
 import math
+
+SHAKE_DURATION = 0.3  # seconds the camera shake lasts on explosion
+SHAKE_MAGNITUDE = 8  # peak per-axis camera offset in world units
 
 
 def update(dt):
@@ -46,4 +52,5 @@ def update(dt):
             "x": self.get_position("x"),
             "y": self.get_position("y"),
         })
+        engine.emit("ShakeCamera", {"duration": SHAKE_DURATION, "magnitude": SHAKE_MAGNITUDE})
         self.destroy()

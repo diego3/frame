@@ -1,0 +1,75 @@
+@startuml 01_engine_boot
+title Engine Boot — from `go run main.go` to the first frame
+
+autonumber
+
+actor Dev
+participant "main.go" as Main
+participant "config" as Config
+participant "engine.Engine" as Engine
+participant "resource.Manager" as Resource
+participant "scene.Manager\n(SceneManager)" as SceneMgr
+participant "game.Game" as Game
+participant "input.Adapter" as InputAdapter
+participant "Scene\n(WorldScene, or a game's\nembedding type e.g. metalslug.Scene)" as Scene
+participant "application/data" as Data
+participant "object.Manager\n(the World)" as World
+participant "PhysicsSystem" as Physics
+participant "Ebiten runtime" as Ebiten
+
+Dev -> Main : go run main.go [config.yaml]
+Main -> Config : Load(configPath)
+Config --> Main : *Config
+
+Main -> Engine : New(cfg, sceneFactories)
+note right of Main
+  sceneFactories is supplied by **main.go**, not the
+  engine itself -- e.g. {"world_scene": ..., "metalslug_scene": ...}.
+  This is what keeps scene registration data-driven
+  (see CLAUDE.md "Known Issues", now resolved).
+end note
+Engine -> Resource : NewManager()
+Engine -> SceneMgr : NewManager()
+loop for each id -> sceneType in cfg.Scenes
+  Engine -> SceneMgr : Register(id, sceneFactories[sceneType])
+end
+Engine -> Game : New(cfg, loader, ui, sceneMgr, cfg.InitialScene, bus)
+Game -> InputAdapter : NewAdapter(bindings, cfg.ScriptEvents)
+Game -> Game : Subscribe(SceneChangeRequested)
+Game -> Game : Subscribe(QuitRequested)
+Engine --> Main : *Engine
+
+Main -> Engine : Run()
+Engine -> Game : Init()
+Game -> SceneMgr : SwitchTo(cfg.InitialScene, cfg, loader, ui, bus)
+SceneMgr -> Scene : factory() // construct a new instance
+SceneMgr -> Scene : Setup(ctx)
+
+activate Scene
+Scene -> Scene : subscribe to MoveRequested,\nScriptEmitted, BeginContact,\nEndContact, DebugOverlayToggled
+Scene -> Scene : script.NewEngine(cfg.ScriptEngine)\n// "lua" or "python", per config
+Scene -> Data : LoadScene(cfg.Assets.ScenePath)
+Data --> Scene : SceneDef (YAML parsed)
+Scene -> Data : BuildWorld(def, loader)
+Data -> World : NewManager() + one GameObject\nper ObjectDef, components built\nby registered builders
+Data --> Scene : *object.Manager
+Scene -> Physics : NewPhysicsSystem(box2d.NewWorld(gravity, pixelScale))
+Scene -> Physics : InitFromWorld(world) // creates a Box2D body\nfor every GameObject with a PhysicsBody
+opt cfg.Camera.Follow is set
+  Scene -> Scene : cam = camera.New(viewport, level size)
+end
+Scene -> Scene : processes = process.NewManager()\n// idle until something like a camera\n// shake attaches to it
+deactivate Scene
+Scene --> SceneMgr : ok
+SceneMgr --> Game : ok
+
+Engine -> Ebiten : SetWindowSize/Title/Resizable/Fullscreen
+Engine -> Ebiten : RunGame(game)
+note over Ebiten
+  From here on, Ebiten owns the loop: it calls
+  Game.Update() and Game.Draw(screen) ~60 times/sec,
+  and Game.Layout() as needed.
+  See **02_frame_update.puml** and **03_frame_draw.puml**.
+end note
+
+@enduml

@@ -14,6 +14,7 @@ func init() {
 	RegisterComponentBuilder("transform", buildTransform)
 	RegisterComponentBuilder("sprite", buildSprite)
 	RegisterComponentBuilder("spritesheet", buildSpritesheet)
+	RegisterComponentBuilder("parallax_layer", buildParallaxLayer)
 	RegisterComponentBuilder("animator", buildAnimator)
 	RegisterComponentBuilder("block", buildBlock)
 	RegisterComponentBuilder("ball", buildBall)
@@ -56,7 +57,8 @@ func buildSprite(params map[string]interface{}, loader ports.ImageLoader) (objec
 		return nil, err
 	}
 	layer, _ := intParam(params, "layer")
-	return &object.Sprite{Image: img, Layer: layer}, nil
+	repeatWidth, _ := floatParam(params, "repeat_width")
+	return &object.Sprite{Image: img, Layer: layer, RepeatWidth: repeatWidth}, nil
 }
 
 func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error) {
@@ -119,6 +121,35 @@ func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (
 		sheet.Tint = color.RGBA{clamp(r), clamp(g), clamp(b), 255}
 	}
 	return sheet, nil
+}
+
+// buildParallaxLayer builds a ParallaxLayer component. scroll_factor defaults to 1 (scrolls 1:1
+// with gameplay) when omitted, matching how a background dropped in with no tuning should behave
+// identically to a plain Sprite until someone deliberately picks a slower factor for depth.
+func buildParallaxLayer(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error) {
+	path, err := stringParam(params, "image")
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return nil, fmt.Errorf("parallax_layer: image path required")
+	}
+	img, err := loader.LoadImage(path)
+	if err != nil {
+		return nil, err
+	}
+	scrollFactor := 1.0
+	if _, has := params["scroll_factor"]; has {
+		scrollFactor, err = floatParam(params, "scroll_factor")
+		if err != nil {
+			return nil, err
+		}
+	}
+	repeat, err := boolParam(params, "repeat")
+	if err != nil {
+		return nil, err
+	}
+	return &object.ParallaxLayer{Image: img, ScrollFactor: scrollFactor, Repeat: repeat}, nil
 }
 
 func buildAnimator(params map[string]interface{}, _ ports.ImageLoader) (object.Component, error) {

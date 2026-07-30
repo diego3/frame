@@ -3,6 +3,7 @@ package event
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 )
 
 // Bus is a synchronous event bus. Handlers are invoked when Emit is called, in registration order,
@@ -13,6 +14,7 @@ type Bus struct {
 	handlers   map[reflect.Type][]func(interface{})
 	delivering bool
 	queue      []interface{}
+	eventCount uint64 // delivered-event counter for TakeEventCount; atomic, no mu needed
 }
 
 // NewBus returns a new event bus.
@@ -85,11 +87,20 @@ func (b *Bus) processQueue(first interface{}) {
 	}
 }
 
+// TakeEventCount returns the number of events delivered (via deliver, so both direct Emits and
+// anything drained from the deferred queue count) since the last call to TakeEventCount, and resets
+// the counter to 0 -- a debug/profiling readout (see scene.drawDebugStats' "events/frame"), not
+// used by any dispatch logic. Concurrent-safe: a single atomic swap, no mu needed.
+func (b *Bus) TakeEventCount() uint64 {
+	return atomic.SwapUint64(&b.eventCount, 0)
+}
+
 // deliver sends a single event to all handlers registered for its concrete type.
 func (b *Bus) deliver(ev interface{}) {
 	if ev == nil {
 		return
 	}
+	atomic.AddUint64(&b.eventCount, 1)
 	typ := reflect.TypeOf(ev)
 	b.mu.RLock()
 	list := b.handlers[typ]

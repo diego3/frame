@@ -71,28 +71,42 @@ class TestSphereTimer(unittest.TestCase):
     def test_spawns_explosion_vfx_at_own_position_when_exploding(self):
         self._set_remaining(0.1)
         st.update(0.2)
-        st.engine.emit.assert_called_once()
-        name, payload = st.engine.emit.call_args[0]
+        name, payload = st.engine.emit.call_args_list[0][0]
         self.assertEqual(name, "SpawnEntity")
         self.assertEqual(payload["prototype"], "explosion_prototype")
         self.assertEqual(payload["x"], 111.0)
         self.assertEqual(payload["y"], 222.0)
+
+    def test_shakes_camera_when_exploding(self):
+        self._set_remaining(0.1)
+        st.update(0.2)
+        self.assertEqual(st.engine.emit.call_count, 2)
+        name, payload = st.engine.emit.call_args_list[1][0]
+        self.assertEqual(name, "ShakeCamera")
+        self.assertIn("duration", payload)
+        self.assertIn("magnitude", payload)
+
+    def test_does_not_shake_camera_while_time_remains(self):
+        self._set_remaining(4.0)
+        st.update(0.5)
+        st.engine.emit.assert_not_called()
 
     def test_does_not_spawn_explosion_vfx_while_time_remains(self):
         self._set_remaining(4.0)
         st.update(0.5)
         st.engine.emit.assert_not_called()
 
-    def test_explosion_vfx_spawned_before_destroy(self):
-        """The explosion should be visible even though the sphere itself is destroyed the same
-        frame -- spawning it first (before self.destroy()) ensures MainMenu.spawnEntity sees a
-        still-consistent world regardless of destroy-processing order."""
+    def test_explosion_vfx_and_shake_emitted_before_destroy(self):
+        """The explosion (and its camera shake) should be visible even though the sphere itself is
+        destroyed the same frame -- emitting both first (before self.destroy()) ensures
+        MainMenu.spawnEntity/shakeCamera see a still-consistent world regardless of
+        destroy-processing order."""
         self._set_remaining(0.1)
         call_order = []
         st.engine.emit.side_effect = lambda *a, **k: call_order.append("emit")
         st.self.destroy.side_effect = lambda: call_order.append("destroy")
         st.update(0.2)
-        self.assertEqual(call_order, ["emit", "destroy"])
+        self.assertEqual(call_order, ["emit", "emit", "destroy"])
 
     def test_uses_entity_name_in_log_messages(self):
         """Different spheres (different self.get_name()) must not share countdown state --

@@ -1,10 +1,8 @@
 package scene
 
 import (
-	"fmt"
 	"image/color"
 	"io/fs"
-	"math"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -17,6 +15,7 @@ import (
 	"goengine/frameengine/physics"
 	"goengine/frameengine/physics/box2d"
 	"goengine/frameengine/ports"
+	"goengine/frameengine/process"
 	"goengine/frameengine/resource"
 	"goengine/frameengine/script"
 	"goengine/frameengine/view/camera"
@@ -28,6 +27,7 @@ import (
 type WorldSceneState struct {
 	World            *object.Manager
 	DebugDrawPhysics bool
+	EventsLastFrame  uint64 // bus.TakeEventCount() as of the start of the last Update; see drawDebugStats
 }
 
 // WorldScene is the engine's generic, data-driven scene type (title + click me button + a
@@ -46,6 +46,9 @@ type WorldScene struct {
 	gameRoot         string          // base path for script loading on OS filesystem (e.g. "games/demo1")
 	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
 	physicsSystem    *PhysicsSystem
+	processes        *process.Manager // timed behaviors with no owning GameObject, e.g. camera shake
+	bus              *event.Bus       // kept only to sample TakeEventCount() for the debug stats overlay
+	lastEventCount   uint64           // bus.TakeEventCount() as of the start of the last Update; shown by drawDebugStats
 	debugDrawPhysics bool
 	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
 	camTarget        string         // name of the GameObject the camera follows
@@ -66,6 +69,7 @@ func NewWorldScene() *WorldScene {
 // The script engine backend (Lua or Python) is selected from cfg.ScriptEngine.
 func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	cfg, loader, root, bus := ctx.Config, ctx.Loader, ctx.UI, ctx.Bus
+	m.bus = bus
 
 	event.Subscribe(bus, func(ev events.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
@@ -81,6 +85,9 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	event.Subscribe(bus, func(ev events.ScriptEmitted) {
 		if ev.Name == "SpawnEntity" {
 			m.spawnEntity(ev.Payload)
+		}
+		if ev.Name == "ShakeCamera" {
+			m.shakeCamera(ev.Payload)
 		}
 		if m.engine != nil {
 			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
@@ -112,6 +119,7 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	// Create the script engine for this scene (Lua or Python based on config).
 	m.engine = script.NewEngine(cfg.ScriptEngine)
 	m.loadedScripts = make(map[string]bool)
+	m.processes = process.NewManager()
 
 	playSound := func(path string) {
 		_ = loader.LoadAudio(path)
@@ -246,154 +254,6 @@ func (m *WorldScene) FindControlled() *object.GameObject {
 	return nil
 }
 
-// updateProjectiles moves each active projectile's Transform by its velocity, then deactivates it
-// once it leaves the level bounds (by more than its own configurable DespawnMargin -- see
-// object.Projectile). This isn't Projectile.Update(dt) because Updater components don't receive
-// their sibling Transform (see object.Updater) — moving a projectile needs both, the same reason
-// updateScripts and PhysicsSystem.SyncToWorld are also WorldScene-level steps rather than generic
-// per-component Update calls. Uses level bounds (m.levelWidth/levelHeight), not the camera
-// viewport — projectile lifetime is a Logic concern, independent of what the View currently has
-// on screen.
-func (m *WorldScene) updateProjectiles(dt float64) {
-	for _, go_ := range m.world.Objects() {
-		if !go_.Active || go_.IsPrototype {
-			continue
-		}
-		proj, ok := go_.GetComponent("projectile").(*object.Projectile)
-		if !ok {
-			continue
-		}
-		t := go_.Transform()
-		if t == nil {
-			continue
-		}
-		t.X += proj.VelX * dt
-		t.Y += proj.VelY * dt
-		margin := proj.DespawnMargin
-		if t.X < -margin || t.X > m.levelWidth+margin ||
-			t.Y < -margin || t.Y > m.levelHeight+margin {
-			go_.Active = false
-		}
-	}
-}
-
-// spawnEntity clones a named prototype GameObject (the Prototype pattern) at the position given
-// in payload, and registers a physics body for it if it has one. Triggered by a script calling
-// engine.emit("SpawnEntity", {...}) -- this is deliberately the *only* thing WorldScene knows how
-// to do generically: deciding when, what, and with what parameters to spawn is a game-rule
-// concern that belongs in a script (e.g. games/metalslug_demo/scripts/python/game_manager.py,
-// which periodically spawns "sphere_prototype" as a falling-hazard rule specific to that demo),
-// not in this scene type, which is also used by other, unrelated games/scenes. Silently does
-// nothing if "prototype" is missing/unknown.
-//
-// Recognized payload keys:
-//
-//	"prototype"     (string, required) name of a GameObject with prototype: true in the scene
-//	"name"          (string, optional) name for the new instance; auto-generated from the
-//	                prototype name + a counter if omitted
-//	"x", "y"        (number, optional) Transform position override
-//	"timer_seconds" (number, optional) overrides a cloned Timer component's Remaining, if present
-//	"vel_x", "vel_y" (number, optional) initial linear velocity set on the clone's physics body
-//	                (e.g. a lobbed-in-a-parabola bomb), applied once the body is created below;
-//	                no-op if the prototype has no physics_body
-func (m *WorldScene) spawnEntity(payload map[string]interface{}) {
-	if m.world == nil {
-		return
-	}
-	protoName, _ := payload["prototype"].(string)
-	if protoName == "" {
-		return
-	}
-	proto := m.world.Find(protoName)
-	if proto == nil || !proto.IsPrototype {
-		return
-	}
-
-	name, _ := payload["name"].(string)
-	if name == "" {
-		m.spawnCount++
-		name = fmt.Sprintf("%s_%d", protoName, m.spawnCount)
-	}
-
-	clone := proto.Clone(name)
-	if t := clone.Transform(); t != nil {
-		if _, ok := payload["x"]; ok {
-			t.X = PayloadFloat(payload, "x", t.X)
-		}
-		if _, ok := payload["y"]; ok {
-			t.Y = PayloadFloat(payload, "y", t.Y)
-		}
-	}
-	if _, ok := payload["timer_seconds"]; ok {
-		if timer, ok := clone.GetComponent("timer").(*object.Timer); ok {
-			timer.Remaining = PayloadFloat(payload, "timer_seconds", timer.Remaining)
-		}
-	}
-
-	m.world.Add(clone)
-	if m.physicsSystem != nil {
-		// Safe to call repeatedly: InitFromWorld only creates bodies for objects whose
-		// PhysicsBody.Body is still nil, so this only ever creates the one new clone's body.
-		m.physicsSystem.InitFromWorld(m.world)
-	}
-	_, hasVelX := payload["vel_x"]
-	_, hasVelY := payload["vel_y"]
-	if hasVelX || hasVelY {
-		if pb := clone.PhysicsBody(); pb != nil && pb.Body != nil {
-			vx := PayloadFloat(payload, "vel_x", 0)
-			vy := PayloadFloat(payload, "vel_y", 0)
-			pb.Body.SetLinearVelocity(physics.Vec2{X: vx, Y: vy})
-		}
-	}
-}
-
-// AABB returns the world-space bounding box (x, y, w, h) for go_, using its Block size if present
-// (both a projectile and this engine's Block placeholders are Blocks), falling back to its
-// PhysicsBody size. ok is false if go_ has no Transform or no usable size. Exported so a game's
-// own gameplay rules (e.g. hit detection) can reuse this instead of re-deriving bounding boxes.
-func AABB(go_ *object.GameObject) (x, y, w, h float64, ok bool) {
-	t := go_.Transform()
-	if t == nil {
-		return 0, 0, 0, 0, false
-	}
-	if blk, isBlock := go_.GetComponent("block").(*object.Block); isBlock && blk.Width > 0 && blk.Height > 0 {
-		return t.X, t.Y, blk.Width, blk.Height, true
-	}
-	if pb := go_.PhysicsBody(); pb != nil && pb.Width > 0 && pb.Height > 0 {
-		return t.X, t.Y, pb.Width, pb.Height, true
-	}
-	return 0, 0, 0, 0, false
-}
-
-// AABBOverlap reports whether two axis-aligned rectangles (top-left x/y, width w, height h) intersect.
-func AABBOverlap(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
-	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
-}
-
-// PayloadFloat reads key from payload as a float64, accepting whatever numeric type the script
-// engine produced (Lua and Python payload numbers may arrive as float64, int, or int64), or
-// fallback if key is absent or not a number.
-func PayloadFloat(payload map[string]interface{}, key string, fallback float64) float64 {
-	switch v := payload[key].(type) {
-	case float64:
-		return v
-	case int:
-		return float64(v)
-	case int64:
-		return float64(v)
-	}
-	return fallback
-}
-
-// NormalizeDir returns (x, y) scaled to unit length, or (1, 0) if both are zero.
-func NormalizeDir(x, y float64) (float64, float64) {
-	length := math.Sqrt(x*x + y*y)
-	if length == 0 {
-		return 1, 0
-	}
-	return x / length, y / length
-}
-
 // cameraTargetCenter returns the world-space center of the camera's follow target, and whether it
 // was found. Center is the transform position plus half the physics body size when present,
 // falling back to the raw transform position (top-left) otherwise.
@@ -437,6 +297,13 @@ func (m *WorldScene) destroyDeactivatedPhysicsBodies() {
 
 // Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
 func (m *WorldScene) Update(dt float64) {
+	// Sampled first, so it covers every event emitted since the previous frame's sample point --
+	// input intents (emitted in application/game.Game.Update before this scene's Update runs),
+	// script/physics-contact events from last frame's updateScripts/physics step below, all of it
+	// -- read by drawDebugStats via WorldSceneState, one full frame behind like FPS/TPS already are.
+	if m.bus != nil {
+		m.lastEventCount = m.bus.TakeEventCount()
+	}
 	if m.world == nil || m.engine == nil {
 		return
 	}
@@ -448,6 +315,14 @@ func (m *WorldScene) Update(dt float64) {
 	}
 	m.world.Update(dt)
 	m.updateProjectiles(dt)
+	if m.cam != nil {
+		// Reset before running processes so concurrent CameraShakes add their offsets together
+		// this frame instead of overwriting each other (see shakeCamera).
+		m.cam.ShakeX, m.cam.ShakeY = 0, 0
+	}
+	if m.processes != nil {
+		m.processes.Update(dt)
+	}
 	if m.cam != nil {
 		if cx, cy, ok := m.cameraTargetCenter(); ok {
 			m.cam.Follow(cx, cy)
@@ -510,6 +385,7 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 		screen.DrawImage(m.titleImg, op)
 	}
 	if state.World != nil {
+		m.drawParallaxLayers(screen)
 		if m.cam != nil {
 			// World objects draw at absolute world coordinates, which may exceed the visible
 			// viewport once a level is wider/taller than the screen. Draw them onto an
@@ -521,7 +397,7 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 				m.physicsSystem.DrawDebug(m.worldBuffer, state.World)
 			}
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(-m.cam.X, -m.cam.Y)
+			op.GeoM.Translate(-(m.cam.X + m.cam.ShakeX), -(m.cam.Y + m.cam.ShakeY))
 			screen.DrawImage(m.worldBuffer, op)
 		} else {
 			state.World.Draw(screen)
@@ -530,6 +406,12 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
+	// Same F3/DebugOverlayToggled flag as the physics wireframes above; drawn directly onto screen
+	// (not the world buffer) last, so it stays fixed in the corner on top of everything else
+	// regardless of camera/level size -- see drawDebugStats' comment for what it shows and why.
+	if state.DebugDrawPhysics {
+		drawDebugStats(screen, state.EventsLastFrame)
+	}
 }
 
 // state returns the current simulation state for the view to read (Logic updates these fields in Update).
@@ -537,6 +419,7 @@ func (m *WorldScene) state() WorldSceneState {
 	return WorldSceneState{
 		World:            m.world,
 		DebugDrawPhysics: m.debugDrawPhysics,
+		EventsLastFrame:  m.lastEventCount,
 	}
 }
 
