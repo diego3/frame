@@ -57,7 +57,8 @@ func buildSprite(params map[string]interface{}, loader ports.ImageLoader) (objec
 		return nil, err
 	}
 	layer, _ := intParam(params, "layer")
-	return &object.Sprite{Image: img, Layer: layer}, nil
+	repeatWidth, _ := floatParam(params, "repeat_width")
+	return &object.Sprite{Image: img, Layer: layer, RepeatWidth: repeatWidth}, nil
 }
 
 func buildSpritesheet(params map[string]interface{}, loader ports.ImageLoader) (object.Component, error) {

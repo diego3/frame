@@ -71,6 +71,16 @@ func TestBuildSprite(t *testing.T) {
 		assert.NotNil(t, sprite.Image)
 		assert.Equal(t, 2, sprite.Layer)
 	})
+
+	t.Run("repeat_width defaults to 0 (no tiling) and is kept when set", func(t *testing.T) {
+		c, err := buildSprite(map[string]interface{}{"image": "x.png"}, &fakeImageLoader{})
+		require.NoError(t, err)
+		assert.Equal(t, 0.0, c.(*object.Sprite).RepeatWidth)
+
+		c, err = buildSprite(map[string]interface{}{"image": "x.png", "repeat_width": 2400.0}, &fakeImageLoader{})
+		require.NoError(t, err)
+		assert.Equal(t, 2400.0, c.(*object.Sprite).RepeatWidth)
+	})
 }
 
 func TestBuildParallaxLayer(t *testing.T) {

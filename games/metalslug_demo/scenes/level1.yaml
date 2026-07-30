@@ -165,58 +165,78 @@ objects:
         path: "scripts/python/enemy_walk.py"
       - type: enemy
         hp: 1
+  # Ground/crates below all swap their flat-color Block for a Sprite cropped from
+  # sci-fi-environment-tileset.png (same sheet the bg_mountains parallax layer's canyon comes from,
+  # for a consistent palette) -- see pieces/*.png next to sky.png/back.png, cropped with PIL since
+  # the tileset's pieces are irregular, not a uniform grid object.Spritesheet could window on its
+  # own (same reason the player's anim_*.png frames were pre-sliced -- see the player transform's
+  # comment above). physics_body keeps each object's exact prior width/height explicitly: with the
+  # block component gone, PhysicsSystem.InitFromWorld has no sibling Block to fall back to for
+  # sizing (see its "prefer Block dimensions when present" comment) and would otherwise default to
+  # 64x64, silently shrinking hitboxes -- these values are unchanged from the old Block entries on
+  # purpose, so collision behavior (and the platform-jump-height comments below) has zero regression.
   - name: ground
     components:
       - type: transform
         x: 0
         y: 460
-      - type: block
-        width: 2400
-        height: 80
-        color_r: 80
-        color_g: 70
-        color_b: 60
+        # ground_tile.png is 32x32; 2.5x scale renders it at 80x80, matching physics_body's height
+        # exactly. repeat_width covers the full 2400-wide level (30 tiles, no partial tile at the
+        # seam since 2400 is an exact multiple of the scaled 80px tile).
+        scale_x: 2.5
+        scale_y: 2.5
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/ground_tile.png"
+        repeat_width: 2400
       - type: physics_body
         body_type: static
+        width: 2400
+        height: 80
   - name: crate_1
     components:
       - type: transform
         x: 700
         y: 380
-      - type: block
-        width: 60
-        height: 80
-        color_r: 120
-        color_g: 100
-        color_b: 60
+        # crate_block.png is 32x32; non-uniform scale stretches it to exactly the crate's own
+        # footprint (60x80) -- a mild aspect distortion, traded for not needing a second tiling axis
+        # just for two static props (see crate_2/crate_3 below for the same trade).
+        scale_x: 1.875
+        scale_y: 2.5
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/crate_block.png"
       - type: physics_body
         body_type: static
+        width: 60
+        height: 80
   - name: crate_2
     components:
       - type: transform
         x: 1400
         y: 400
-      - type: block
-        width: 80
-        height: 60
-        color_r: 120
-        color_g: 100
-        color_b: 60
+        scale_x: 2.5
+        scale_y: 1.875
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/crate_block.png"
       - type: physics_body
         body_type: static
+        width: 80
+        height: 60
   - name: crate_3
     components:
       - type: transform
         x: 2050
         y: 80
-      - type: block
-        width: 60
-        height: 380
-        color_r: 120
-        color_g: 100
-        color_b: 60
+        # crate_3 is a tall thin pillar (60x380), not a box like crate_1/2 -- pillar_column.png
+        # (16x176, an alternating tan/dark-red canyon-wall column strip from the same tileset) fits
+        # that silhouette far better than stretching the square crate_block.png would.
+        scale_x: 3.75
+        scale_y: 2.1591
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/pillar_column.png"
       - type: physics_body
         body_type: static
+        width: 60
+        height: 380
 
   # Platforms — floating static ledges at increasing height/difficulty, for exercising jump arcs
   # beyond the crates above (a straight side-on wall vs. a ledge you jump ONTO are different
@@ -225,19 +245,23 @@ objects:
   # its own height) -- a jump peaks with the player's feet roughly 90-100 units above y=460, i.e.
   # a reachable platform's top (its own Transform.Y, since platforms have no height offset here)
   # needs to be no lower than ~y=365. platform_1..4 step from "trivial" to "right at the limit".
+  # platform_1..4 swap Block for a Sprite tiling platform_cap.png (32x20, a rounded rock-top ledge
+  # cropped from the same canyon tileset as ground/crates above) via repeat_width -- no scale needed
+  # since the piece's own 20px height already matches the platforms' original Block height exactly.
+  # Same "physics_body needs explicit width/height now that there's no sibling Block to size from"
+  # note as ground/crates above applies to all four.
   - name: platform_1
     components:
       - type: transform
         x: 300
         y: 425 # feet rise 460-425=35 units -- trivial hop
-      - type: block
-        width: 120
-        height: 20
-        color_r: 150
-        color_g: 130
-        color_b: 90
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/platform_cap.png"
+        repeat_width: 120
       - type: physics_body
         body_type: static
+        width: 120
+        height: 20
 
   # Stationary "bomber" enemy standing on platform_1, lobbing sphere_prototype bombs at the player
   # in a parabolic arc -- see enemy_bomber.py for the aim/throw rule (Python, per this project's
@@ -301,40 +325,37 @@ objects:
       - type: transform
         x: 950
         y: 400 # feet rise 60 units -- easy, needs an actual jump though
-      - type: block
-        width: 140
-        height: 20
-        color_r: 150
-        color_g: 130
-        color_b: 90
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/platform_cap.png"
+        repeat_width: 140
       - type: physics_body
         body_type: static
+        width: 140
+        height: 20
   - name: platform_3
     components:
       - type: transform
         x: 1300
         y: 380 # feet rise 80 units -- moderate
-      - type: block
-        width: 140
-        height: 20
-        color_r: 150
-        color_g: 130
-        color_b: 90
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/platform_cap.png"
+        repeat_width: 140
       - type: physics_body
         body_type: static
+        width: 140
+        height: 20
   - name: platform_4
     components:
       - type: transform
         x: 1750
         y: 365 # feet rise 95 units -- right at the limit of a single jump
-      - type: block
-        width: 150
-        height: 20
-        color_r: 150
-        color_g: 130
-        color_b: 90
+      - type: sprite
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/pieces/platform_cap.png"
+        repeat_width: 150
       - type: physics_body
         body_type: static
+        width: 150
+        height: 20
 
   # Falling-sphere prototype: a game-rule hazard, cloned periodically by game_manager.py (the
   # "game_manager" entity's script, above) via engine.emit("SpawnEntity", ...) at a random X above
