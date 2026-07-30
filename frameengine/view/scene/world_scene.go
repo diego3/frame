@@ -27,6 +27,7 @@ import (
 type WorldSceneState struct {
 	World            *object.Manager
 	DebugDrawPhysics bool
+	EventsLastFrame  uint64 // bus.TakeEventCount() as of the start of the last Update; see drawDebugStats
 }
 
 // WorldScene is the engine's generic, data-driven scene type (title + click me button + a
@@ -46,6 +47,8 @@ type WorldScene struct {
 	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
 	physicsSystem    *PhysicsSystem
 	processes        *process.Manager // timed behaviors with no owning GameObject, e.g. camera shake
+	bus              *event.Bus       // kept only to sample TakeEventCount() for the debug stats overlay
+	lastEventCount   uint64           // bus.TakeEventCount() as of the start of the last Update; shown by drawDebugStats
 	debugDrawPhysics bool
 	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
 	camTarget        string         // name of the GameObject the camera follows
@@ -66,6 +69,7 @@ func NewWorldScene() *WorldScene {
 // The script engine backend (Lua or Python) is selected from cfg.ScriptEngine.
 func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	cfg, loader, root, bus := ctx.Config, ctx.Loader, ctx.UI, ctx.Bus
+	m.bus = bus
 
 	event.Subscribe(bus, func(ev events.DebugOverlayToggled) {
 		m.debugDrawPhysics = !m.debugDrawPhysics
@@ -293,6 +297,13 @@ func (m *WorldScene) destroyDeactivatedPhysicsBodies() {
 
 // Update implements ports.Scene. Runs script components (shared engine), then physics step, sync, world update.
 func (m *WorldScene) Update(dt float64) {
+	// Sampled first, so it covers every event emitted since the previous frame's sample point --
+	// input intents (emitted in application/game.Game.Update before this scene's Update runs),
+	// script/physics-contact events from last frame's updateScripts/physics step below, all of it
+	// -- read by drawDebugStats via WorldSceneState, one full frame behind like FPS/TPS already are.
+	if m.bus != nil {
+		m.lastEventCount = m.bus.TakeEventCount()
+	}
 	if m.world == nil || m.engine == nil {
 		return
 	}
@@ -395,6 +406,12 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
+	// Same F3/DebugOverlayToggled flag as the physics wireframes above; drawn directly onto screen
+	// (not the world buffer) last, so it stays fixed in the corner on top of everything else
+	// regardless of camera/level size -- see drawDebugStats' comment for what it shows and why.
+	if state.DebugDrawPhysics {
+		drawDebugStats(screen, state.EventsLastFrame)
+	}
 }
 
 // state returns the current simulation state for the view to read (Logic updates these fields in Update).
@@ -402,6 +419,7 @@ func (m *WorldScene) state() WorldSceneState {
 	return WorldSceneState{
 		World:            m.world,
 		DebugDrawPhysics: m.debugDrawPhysics,
+		EventsLastFrame:  m.lastEventCount,
 	}
 }
 
