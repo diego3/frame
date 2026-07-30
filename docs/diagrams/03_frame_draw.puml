@@ -1,0 +1,48 @@
+@startuml 03_frame_draw
+title Frame Draw — presenting one tick's state
+
+autonumber
+
+participant "Ebiten runtime" as Ebiten
+participant "game.Game" as Game
+participant "Scene\n(WorldScene / embedding type)" as Scene
+participant "worldBuffer\n(*ebiten.Image)" as Buffer
+participant "object.Manager\n(the World)" as World
+participant "a Drawer component\n(Sprite / Spritesheet / Block / Ball)" as Drawer
+participant "PhysicsSystem" as Physics
+participant "camera.Camera" as Camera
+participant "ui.Container" as UI
+
+Ebiten -> Game : Draw(screen)
+Game -> Scene : sc.Draw(screen)
+
+Scene -> Scene : draw title image
+Scene -> Scene : drawParallaxLayers(screen)
+
+alt a camera is configured (cfg.camera.follow)
+  note over Scene, Buffer
+    World objects draw at absolute world coordinates, which can exceed
+    the visible viewport. Draw them to an offscreen buffer sized to the
+    whole level, then blit *that* translated by the camera's offset --
+    this is the only way the camera "moves" the view.
+  end note
+  Scene -> Buffer : Clear()
+  Scene -> World : Draw(worldBuffer)
+  loop for each active, non-prototype GameObject
+    World -> Drawer : Draw(worldBuffer, transform)
+  end
+  opt debug physics overlay toggled on (DebugOverlayToggled)
+    Scene -> Physics : DrawDebug(worldBuffer, world)
+  end
+  Scene -> Camera : read X, Y, ShakeX, ShakeY
+  Scene -> Ebiten : screen.DrawImage(worldBuffer,\ntranslate by -(cam.X+ShakeX), -(cam.Y+ShakeY))
+else no camera
+  Scene -> World : Draw(screen)  // no translation needed
+  loop for each active, non-prototype GameObject
+    World -> Drawer : Draw(screen, transform)
+  end
+end
+
+Game -> UI : Draw(screen, sc.UIFace())
+
+@enduml

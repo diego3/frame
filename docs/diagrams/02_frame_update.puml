@@ -1,0 +1,79 @@
+@startuml 02_frame_update
+title Frame Update — one tick of the main loop (~60/sec)
+
+autonumber
+
+participant "Ebiten runtime" as Ebiten
+participant "game.Game" as Game
+participant "input.Adapter" as InputAdapter
+participant "event.Bus" as Bus
+participant "Scene\n(WorldScene / embedding type)" as Scene
+participant "script.Engine\n(Lua or Python VM)" as VM
+participant "a Python/Lua\nscript, e.g. player_controller.py" as Script
+participant "PhysicsSystem" as Physics
+participant "object.Manager\n(the World)" as World
+participant "process.Manager" as Processes
+participant "camera.Camera" as Camera
+
+Ebiten -> Game : Update()
+Game -> Game : check shutdown / quit channels
+Game -> InputAdapter : Poll()
+
+InputAdapter -> Bus : Emit(MoveRequested{DirX, DirY})
+note right: emitted **every frame** with the\ncurrent direction, even (0, 0)
+opt a just-pressed action has no mapped script event\n(e.g. the built-in "debug_overlay" action)
+  InputAdapter -> Bus : Emit(DebugOverlayToggled{})
+end
+opt a just-pressed action is in cfg.script_events\n(e.g. "attack" -> "AttackRequested")
+  InputAdapter -> Bus : Emit(ScriptEmitted{Name: "AttackRequested"})
+end
+
+Bus -> Scene : dispatch to handlers Scene\nsubscribed in Setup() (synchronous,\nsame call stack, see ADR-002)
+Scene -> Scene : MoveRequested handler:\nfind the controlled GameObject,\nwrite IntentBuffer.PendingMoveX/Y
+Scene -> VM : ScriptEmitted handler:\nCallOnEvent(name, payload)
+VM -> Script : on_event(name, payload)\n(broadcast to every **loaded** script\nthat defines on_event)
+
+Game -> Scene : sc.Update(dt)  // dt is a fixed 1/60s
+
+group updateScripts(dt)
+  loop for each active GameObject with a Script component
+    Scene -> VM : CallScriptUpdate(path, "update", go_, dt)
+    VM -> Script : update(dt)  // "self" is bound to go_ for this call only
+    opt the script decides to act this frame\n(e.g. pending_shoot was set by an earlier on_event)
+      Script -> VM : engine.emit("SpawnProjectile", payload)
+      VM -> Bus : Emit(ScriptEmitted{...})
+      Bus -> Scene : ScriptEmitted handler\n(re-entrant, same frame -- see the\nevent bus's deferred-queue note in ADR-002)
+      Scene -> Scene : spawnEntity(...) / spawnProjectile(...)\n(Prototype-clone a "*_prototype" GameObject)
+    end
+  end
+end
+
+Scene -> Scene : destroyDeactivatedPhysicsBodies()\n(scripts may have called self.destroy() above)
+Scene -> Physics : Step(dt)
+Physics -> Physics : box2d.World.Step(dt)
+opt a contact began or ended this step
+  Physics -> Bus : Emit(BeginContact{A, B}) / Emit(EndContact{A, B})
+  Bus -> Scene : handler -> CallOnEvent("BeginContact"/"EndContact", ...)
+  Scene -> VM : CallOnEvent(...)
+  VM -> Script : on_event("BeginContact", payload)
+end
+Scene -> Physics : SyncToWorld(world)\n// Box2D body positions -> Transform components
+Scene -> World : world.Update(dt)\n// runs Updater components, e.g. Spritesheet frame advance
+Scene -> Scene : updateProjectiles(dt)\n// move by velocity, deactivate past level bounds
+opt this Scene embeds gameplay rules\n(e.g. metalslug.Scene)
+  Scene -> Scene : updateHitDetection()\n// AABB overlap: projectile vs enemy
+end
+
+opt a camera is configured (cfg.camera.follow)
+  Scene -> Camera : ShakeX, ShakeY = 0, 0
+  Scene -> Processes : processes.Update(dt)
+  opt a CameraShake process is attached
+    Processes -> Camera : ShakeX/Y += decaying random offset\n(see 05_enemy_bomber_camera_shake.puml)
+  end
+  Scene -> Scene : cameraTargetCenter()
+  Scene -> Camera : Follow(centerX, centerY)
+end
+
+Game -> Game : ui.Update(width, height)
+
+@enduml

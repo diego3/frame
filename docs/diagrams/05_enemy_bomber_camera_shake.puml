@@ -1,0 +1,83 @@
+@startuml 05_enemy_bomber_camera_shake
+title Gameplay Example — a bomb explodes and shakes the camera
+
+autonumber
+
+participant "Scene\n(WorldScene)" as Scene
+participant "script.Engine\n(Python VM)" as VM
+participant "enemy_bomber.py" as Bomber
+participant "sphere_timer.py\n(shared by every sphere clone)" as SphereScript
+participant "event.Bus" as Bus
+participant "object.Manager\n(the World)" as World
+participant "object.Timer\ncomponent" as Timer
+participant "PhysicsSystem" as Physics
+participant "process.Manager" as Processes
+participant "camera.CameraShake" as Shake
+participant "camera.Camera" as Camera
+
+== Every frame: the bomber's own cooldown (module-level state) ==
+
+Scene -> VM : CallScriptUpdate("enemy_bomber.py", "update", bomberGO, dt)
+VM -> Bomber : update(dt)
+Bomber -> Bomber : _cooldown -= dt
+note right
+  Module-level "_cooldown" is safe here because exactly one
+  GameObject ("enemy_bomber") ever loads this script path
+  -- unlike sphere_timer.py below, which many clones share.
+end note
+
+opt _cooldown <= 0
+  Bomber -> Bomber : solve SUVAT parabola aimed at the\nplayer's feet -> vx, vy
+  Bomber -> VM : engine.emit("SpawnEntity", {"prototype": "sphere_prototype",\n"vel_x": vx, "vel_y": vy, "timer_seconds": FUSE_SECONDS})
+  VM -> Bus : Emit(ScriptEmitted{...})
+  Bus -> Scene : ScriptEmitted handler -> spawnEntity(payload)
+  Scene -> World : sphere_prototype.Clone("sphere_N")
+  Scene -> Timer : Remaining = FUSE_SECONDS (from payload)
+  Scene -> Physics : InitFromWorld(world)\n// creates a Box2D body for the new clone only
+  Scene -> Physics : body.SetLinearVelocity(vx, vy)\n// launches it on the parabola
+  Scene -> World : world.Add(clone)
+  Bomber -> Bomber : play_animation("attack")
+end
+
+== Every frame after, until the fuse runs out ==
+
+Scene -> VM : CallScriptUpdate("sphere_timer.py", "update", sphereGO, dt)
+VM -> SphereScript : update(dt)
+SphereScript -> Timer : remaining = self.get_timer() - dt
+SphereScript -> Timer : self.set_timer(remaining)
+note right
+  Countdown lives in the **Timer component**, not a module
+  global -- several spheres/bombs can be falling at once and
+  share this same script path (see script/python_engine.go's
+  PythonEngine.modules, keyed by path, not by GameObject).
+end note
+
+opt remaining <= 0 (fuse expired)
+  SphereScript -> VM : engine.emit("SpawnEntity", {"prototype": "explosion_prototype", x, y})
+  SphereScript -> VM : engine.emit("ShakeCamera", {"duration": 0.3, "magnitude": 8})
+  SphereScript -> SphereScript : self.destroy()
+  VM -> Bus : Emit(ScriptEmitted) x2, in order
+  Bus -> Scene : ScriptEmitted handler, twice
+  Scene -> World : spawnEntity(explosion_prototype)\n// VFX clone, see explosion_effect.py
+  Scene -> Scene : shakeCamera(payload)
+  Scene -> Processes : processes.Attach(NewCameraShake(cam, 0.3, 8))
+end
+
+== Every subsequent frame, inside Scene.Update ==
+
+Scene -> Camera : ShakeX, ShakeY = 0, 0
+Scene -> Processes : processes.Update(dt)
+Processes -> Shake : Update(dt)
+Shake -> Camera : ShakeX/Y += decaying random offset
+note right
+  "+=", not "=" -- a second CameraShake attached around
+  the same time adds its own contribution instead of
+  overwriting this one, so overlapping explosions stack.
+end note
+opt elapsed >= Duration
+  Shake -> Shake : Succeed()
+  note right: Processes removes it\nnext frame automatically
+end
+Scene -> Scene : Draw() translates the world buffer by\n-(cam.X+ShakeX), -(cam.Y+ShakeY)
+
+@enduml

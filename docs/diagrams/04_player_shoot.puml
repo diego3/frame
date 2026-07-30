@@ -1,0 +1,63 @@
+@startuml 04_player_shoot
+title Gameplay Example — the player shoots (key "J")
+
+autonumber
+
+actor Player
+participant "input.Adapter" as InputAdapter
+participant "event.Bus" as Bus
+participant "Scene\n(WorldScene base)" as WorldScene
+participant "metalslug.Scene\n(embeds WorldScene)" as MetalslugScene
+participant "script.Engine\n(Python VM)" as VM
+participant "player_controller.py" as PlayerScript
+participant "object.Manager\n(the World)" as World
+
+== Frame N: the key press is only latched ==
+
+Player -> InputAdapter : holds "J" (bound to action "attack")
+InputAdapter -> Bus : Emit(ScriptEmitted{Name: "AttackRequested"})
+note right: config.yaml: input.attack = "J",\nscript_events.attack = "AttackRequested"
+Bus -> WorldScene : ScriptEmitted handler
+WorldScene -> VM : CallOnEvent("AttackRequested", nil)
+VM -> PlayerScript : on_event("AttackRequested", payload)
+PlayerScript -> PlayerScript : pending_shoot = True
+note over PlayerScript
+  on_event only **latches** the request. The actual shot
+  is decided in update(dt), same frame or (more often) the next --
+  see the script's own comment on why shooting isn't done here directly.
+end note
+
+== Frame N (later in the same tick) or N+1: the shot fires ==
+
+WorldScene -> VM : CallScriptUpdate("player_controller.py", "update", playerGO, dt)
+VM -> PlayerScript : update(dt)
+PlayerScript -> PlayerScript : reads facing_x, pending_shoot
+PlayerScript -> VM : engine.emit("SpawnProjectile", {"dir_x": facing_x, "dir_y": 0})
+PlayerScript -> PlayerScript : pending_shoot = False
+VM -> Bus : Emit(ScriptEmitted{Name: "SpawnProjectile", ...})
+
+Bus -> MetalslugScene : ScriptEmitted handler
+note right of MetalslugScene
+  "SpawnProjectile" is a **metalslug-specific** convention --
+  MetalslugScene.Setup subscribes to it on top of everything
+  WorldScene already handles (e.g. "SpawnEntity"), because
+  aiming/clearance math is this demo's own rule, not the
+  engine's (see ADR-012's sibling doc, frame_engine_migration_plan.md).
+end note
+MetalslugScene -> World : Find("projectile_prototype")
+World --> MetalslugScene : the prototype GameObject
+MetalslugScene -> World : proto.Clone("projectile")
+note right: Prototype pattern (object.GameObject.Clone) --\nnever hand-built field by field
+MetalslugScene -> MetalslugScene : compute spawn offset from the\nplayer's own PhysicsBody half-extent\n+ Projectile.SpawnClearance
+MetalslugScene -> MetalslugScene : set clone's Projectile.VelX/VelY\n= dir * Projectile.Speed
+MetalslugScene -> World : world.Add(clone)
+
+note over World
+  From the next frame on, WorldScene.updateProjectiles(dt)
+  moves the clone by VelX/VelY every tick, and
+  MetalslugScene.updateHitDetection() checks it against every
+  active Enemy's AABB until it hits one, leaves the level
+  bounds (DespawnMargin), or is otherwise deactivated.
+end note
+
+@enduml

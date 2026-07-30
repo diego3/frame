@@ -15,6 +15,7 @@ import (
 	"goengine/frameengine/physics"
 	"goengine/frameengine/physics/box2d"
 	"goengine/frameengine/ports"
+	"goengine/frameengine/process"
 	"goengine/frameengine/resource"
 	"goengine/frameengine/script"
 	"goengine/frameengine/view/camera"
@@ -44,6 +45,7 @@ type WorldScene struct {
 	gameRoot         string          // base path for script loading on OS filesystem (e.g. "games/demo1")
 	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
 	physicsSystem    *PhysicsSystem
+	processes        *process.Manager // timed behaviors with no owning GameObject, e.g. camera shake
 	debugDrawPhysics bool
 	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
 	camTarget        string         // name of the GameObject the camera follows
@@ -80,6 +82,9 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 		if ev.Name == "SpawnEntity" {
 			m.spawnEntity(ev.Payload)
 		}
+		if ev.Name == "ShakeCamera" {
+			m.shakeCamera(ev.Payload)
+		}
 		if m.engine != nil {
 			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
 		}
@@ -110,6 +115,7 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	// Create the script engine for this scene (Lua or Python based on config).
 	m.engine = script.NewEngine(cfg.ScriptEngine)
 	m.loadedScripts = make(map[string]bool)
+	m.processes = process.NewManager()
 
 	playSound := func(path string) {
 		_ = loader.LoadAudio(path)
@@ -299,6 +305,14 @@ func (m *WorldScene) Update(dt float64) {
 	m.world.Update(dt)
 	m.updateProjectiles(dt)
 	if m.cam != nil {
+		// Reset before running processes so concurrent CameraShakes add their offsets together
+		// this frame instead of overwriting each other (see shakeCamera).
+		m.cam.ShakeX, m.cam.ShakeY = 0, 0
+	}
+	if m.processes != nil {
+		m.processes.Update(dt)
+	}
+	if m.cam != nil {
 		if cx, cy, ok := m.cameraTargetCenter(); ok {
 			m.cam.Follow(cx, cy)
 		}
@@ -372,7 +386,7 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 				m.physicsSystem.DrawDebug(m.worldBuffer, state.World)
 			}
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(-m.cam.X, -m.cam.Y)
+			op.GeoM.Translate(-(m.cam.X + m.cam.ShakeX), -(m.cam.Y + m.cam.ShakeY))
 			screen.DrawImage(m.worldBuffer, op)
 		} else {
 			state.World.Draw(screen)
