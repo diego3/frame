@@ -360,6 +360,7 @@ func (m *WorldScene) Draw(screen *ebiten.Image) {
 		screen.DrawImage(m.titleImg, op)
 	}
 	if state.World != nil {
+		m.drawParallaxLayers(screen)
 		if m.cam != nil {
 			// World objects draw at absolute world coordinates, which may exceed the visible
 			// viewport once a level is wider/taller than the screen. Draw them onto an

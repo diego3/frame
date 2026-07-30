@@ -73,6 +73,38 @@ func TestBuildSprite(t *testing.T) {
 	})
 }
 
+func TestBuildParallaxLayer(t *testing.T) {
+	t.Run("missing image path is an error", func(t *testing.T) {
+		_, err := buildParallaxLayer(map[string]interface{}{}, &fakeImageLoader{})
+		assert.Error(t, err)
+	})
+
+	t.Run("loader error propagates", func(t *testing.T) {
+		boom := assert.AnError
+		_, err := buildParallaxLayer(map[string]interface{}{"image": "sky.png"}, &fakeImageLoader{err: boom})
+		assert.ErrorIs(t, err, boom)
+	})
+
+	t.Run("scroll_factor defaults to 1 and repeat to false when omitted", func(t *testing.T) {
+		c, err := buildParallaxLayer(map[string]interface{}{"image": "sky.png"}, &fakeImageLoader{})
+		require.NoError(t, err)
+		layer := c.(*object.ParallaxLayer)
+		assert.NotNil(t, layer.Image)
+		assert.Equal(t, 1.0, layer.ScrollFactor)
+		assert.False(t, layer.Repeat)
+	})
+
+	t.Run("explicit scroll_factor and repeat are kept, including a zero factor", func(t *testing.T) {
+		c, err := buildParallaxLayer(map[string]interface{}{
+			"image": "sky.png", "scroll_factor": 0.0, "repeat": true,
+		}, &fakeImageLoader{})
+		require.NoError(t, err)
+		layer := c.(*object.ParallaxLayer)
+		assert.Equal(t, 0.0, layer.ScrollFactor)
+		assert.True(t, layer.Repeat)
+	})
+}
+
 func TestBuildSpritesheet(t *testing.T) {
 	t.Run("missing frame_width is an error", func(t *testing.T) {
 		_, err := buildSpritesheet(map[string]interface{}{

@@ -10,143 +10,42 @@
 # both wired up — this scene is now the full build-plan MVP.
 
 objects:
-  # Background: alternating vertical stripes spanning the full level so camera-follow's horizontal
-  # scroll is visually obvious (plain black was impossible to judge motion against) before real
-  # art lands. Purely decorative -- no physics_body -- and listed first so object.Manager.Draw
-  # (which draws GameObjects in list order, see application/data.BuildWorld) renders them behind
-  # everything else. 12 stripes x 200 = 2400, matching layout.level_width exactly.
-  - name: bg_stripe_0
+  # Background: two parallax layers (see object.ParallaxLayer / scene.WorldScene.drawParallaxLayers)
+  # replacing the old flat-color bg_stripe_0..11 placeholder. Source art is
+  # SideviewSciFi's sci-fi-environment-background-files (a real, exported PNG pair meant for exactly
+  # this: sky.png is the opaque backdrop, back.png is the same canvas with a transparent sky and an
+  # opaque mountain/ground silhouette in the lower ~40%, so drawing sky then back at the identical
+  # position/scale composites into one background -- see the alpha check that confirmed this before
+  # writing these entries). Both are scaled 540/176 (level_height / source height, uniform on both
+  # axes to keep the pixel art undistorted) so the art fully covers the level's height; drawn scaled
+  # width (288 * that factor =~ 884px) is narrower than the 960px viewport, so both set repeat:
+  # true to tile and avoid a gap on the right as the camera scrolls. sky is listed first (drawn
+  # first, so back's transparent sky-region shows it through) and given a lower scroll_factor (0,
+  # fixed to the camera -- reads as infinitely distant) than back (0.25 -- drifts slowly against
+  # gameplay, which itself scrolls at the implicit 1.0 every other object gets via the world buffer)
+  # for a two-layer depth effect as the player crosses the level's 2400-wide scroll range.
+  - name: bg_sky
     components:
       - type: transform
         x: 0
         y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_1
+        scale_x: 3.0682
+        scale_y: 3.0682
+      - type: parallax_layer
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/sky.png"
+        scroll_factor: 0
+        repeat: true
+  - name: bg_mountains
     components:
       - type: transform
-        x: 200
+        x: 0
         y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
-  - name: bg_stripe_2
-    components:
-      - type: transform
-        x: 400
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_3
-    components:
-      - type: transform
-        x: 600
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
-  - name: bg_stripe_4
-    components:
-      - type: transform
-        x: 800
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_5
-    components:
-      - type: transform
-        x: 1000
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
-  - name: bg_stripe_6
-    components:
-      - type: transform
-        x: 1200
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_7
-    components:
-      - type: transform
-        x: 1400
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
-  - name: bg_stripe_8
-    components:
-      - type: transform
-        x: 1600
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_9
-    components:
-      - type: transform
-        x: 1800
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
-  - name: bg_stripe_10
-    components:
-      - type: transform
-        x: 2000
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 120
-        color_g: 172
-        color_b: 222
-  - name: bg_stripe_11
-    components:
-      - type: transform
-        x: 2200
-        y: 0
-      - type: block
-        width: 200
-        height: 540
-        color_r: 96
-        color_g: 148
-        color_b: 200
+        scale_x: 3.0682
+        scale_y: 3.0682
+      - type: parallax_layer
+        image: "assets/SideviewSciFi/collection/Environments/sci-fi-environment-background-files/PNG/back.png"
+        scroll_factor: 0.25
+        repeat: true
 
   # Prototype (not a real object): "prototype: true" means this is never run or drawn (see
   # object.GameObject.IsPrototype) — it only exists to be cloned by spawnProjectile. Its transform
