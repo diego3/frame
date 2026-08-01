@@ -3,6 +3,7 @@ package scene
 import (
 	"image/color"
 	"io/fs"
+	"log"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -38,24 +39,26 @@ type WorldSceneState struct {
 // docs/frame_engine_migration_plan.md's "blocking design problem" for why this split exists).
 // Logic (Update) runs script components (shared engine per scene), then physics, then world update.
 type WorldScene struct {
-	titleImg         *ebiten.Image
-	uiFace           font.Face
-	world            *object.Manager
-	engine           script.Engine
-	loadedScripts    map[string]bool // path -> true once loaded
-	gameRoot         string          // base path for script loading on OS filesystem (e.g. "games/demo1")
-	fsys             fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
-	physicsSystem    *PhysicsSystem
-	processes        *process.Manager // timed behaviors with no owning GameObject, e.g. camera shake
-	bus              *event.Bus       // kept only to sample TakeEventCount() for the debug stats overlay
-	lastEventCount   uint64           // bus.TakeEventCount() as of the start of the last Update; shown by drawDebugStats
-	debugDrawPhysics bool
-	cam              *camera.Camera // nil unless cfg.Camera.Follow is set
-	camTarget        string         // name of the GameObject the camera follows
-	worldBuffer      *ebiten.Image  // offscreen sized to the level; drawn to screen translated by -cam.X/Y
-	levelWidth       float64        // world bounds for e.g. projectile off-level deactivation; always set, camera or not
-	levelHeight      float64
-	spawnCount       int // fallback unique-name counter for spawnEntity when payload omits "name"
+	titleImg            *ebiten.Image
+	uiFace              font.Face
+	world               *object.Manager
+	engine              script.Engine
+	loadedScripts       map[string]bool // path -> true once a load has been attempted (success or failure)
+	scriptLoadFailed    map[string]bool // path -> true if that load attempt failed; skips CallScriptUpdate
+	scriptUpdateFailing map[string]bool // path -> true while CallScriptUpdate is erroring; logs only on transition
+	gameRoot            string          // base path for script loading on OS filesystem (e.g. "games/demo1")
+	fsys                fs.FS           // when non-nil, scripts and scenes are loaded from this FS instead
+	physicsSystem       *PhysicsSystem
+	processes           *process.Manager // timed behaviors with no owning GameObject, e.g. camera shake
+	bus                 *event.Bus       // kept only to sample TakeEventCount() for the debug stats overlay
+	lastEventCount      uint64           // bus.TakeEventCount() as of the start of the last Update; shown by drawDebugStats
+	debugDrawPhysics    bool
+	cam                 *camera.Camera // nil unless cfg.Camera.Follow is set
+	camTarget           string         // name of the GameObject the camera follows
+	worldBuffer         *ebiten.Image  // offscreen sized to the level; drawn to screen translated by -cam.X/Y
+	levelWidth          float64        // world bounds for e.g. projectile off-level deactivation; always set, camera or not
+	levelHeight         float64
+	spawnCount          int // fallback unique-name counter for spawnEntity when payload omits "name"
 }
 
 // NewWorldScene returns a new, empty WorldScene.
@@ -90,23 +93,29 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 			m.shakeCamera(ev.Payload)
 		}
 		if m.engine != nil {
-			_ = m.engine.CallOnEvent(ev.Name, ev.Payload)
+			if err := m.engine.CallOnEvent(ev.Name, ev.Payload); err != nil {
+				log.Printf("script: on_event(%q) failed: %v", ev.Name, err)
+			}
 		}
 	})
 	event.Subscribe(bus, func(ev events.BeginContact) {
 		if m.engine != nil {
-			_ = m.engine.CallOnEvent("BeginContact", map[string]interface{}{
+			if err := m.engine.CallOnEvent("BeginContact", map[string]interface{}{
 				"GameObjectNameA": ev.GameObjectNameA,
 				"GameObjectNameB": ev.GameObjectNameB,
-			})
+			}); err != nil {
+				log.Printf("script: on_event(\"BeginContact\") failed: %v", err)
+			}
 		}
 	})
 	event.Subscribe(bus, func(ev events.EndContact) {
 		if m.engine != nil {
-			_ = m.engine.CallOnEvent("EndContact", map[string]interface{}{
+			if err := m.engine.CallOnEvent("EndContact", map[string]interface{}{
 				"GameObjectNameA": ev.GameObjectNameA,
 				"GameObjectNameB": ev.GameObjectNameB,
-			})
+			}); err != nil {
+				log.Printf("script: on_event(\"EndContact\") failed: %v", err)
+			}
 		}
 	})
 
@@ -119,6 +128,8 @@ func (m *WorldScene) Setup(ctx *ports.SceneContext) error {
 	// Create the script engine for this scene (Lua or Python based on config).
 	m.engine = script.NewEngine(cfg.ScriptEngine)
 	m.loadedScripts = make(map[string]bool)
+	m.scriptLoadFailed = make(map[string]bool)
+	m.scriptUpdateFailing = make(map[string]bool)
 	m.processes = process.NewManager()
 
 	playSound := func(path string) {
@@ -354,23 +365,41 @@ func (m *WorldScene) updateScripts(dt float64) {
 			if m.fsys != nil {
 				src, readErr := fs.ReadFile(m.fsys, s.Path)
 				if readErr != nil {
-					continue
+					loadErr = readErr
+				} else {
+					loadErr = m.engine.DoString(scriptPath, string(src))
 				}
-				loadErr = m.engine.DoString(scriptPath, string(src))
 			} else {
 				loadErr = m.engine.DoFile(scriptPath)
 			}
-			if loadErr != nil {
-				continue
-			}
+			// Mark as attempted regardless of outcome: on failure this stops updateScripts from
+			// retrying (and re-logging) the same broken load every frame. scriptLoadFailed is what
+			// actually gates CallScriptUpdate below.
 			m.loadedScripts[s.Path] = true
+			if loadErr != nil {
+				log.Printf("script: failed to load %q: %v", scriptPath, loadErr)
+				m.scriptLoadFailed[s.Path] = true
+			}
+		}
+		if m.scriptLoadFailed[s.Path] {
+			continue
 		}
 		funcName := s.UpdateFuncName
 		if funcName == "" {
 			funcName = "update"
 		}
 		if err := m.engine.CallScriptUpdate(scriptPath, funcName, go_, dt); err != nil {
+			// Logged only on the success->failure transition (not every frame a script keeps
+			// failing) to respect the "no per-frame logging" rule while still surfacing the error.
+			if !m.scriptUpdateFailing[s.Path] {
+				log.Printf("script: %s(%.4f) failed in %q: %v", funcName, dt, scriptPath, err)
+				m.scriptUpdateFailing[s.Path] = true
+			}
 			continue
+		}
+		if m.scriptUpdateFailing[s.Path] {
+			log.Printf("script: %s recovered in %q", funcName, scriptPath)
+			m.scriptUpdateFailing[s.Path] = false
 		}
 	}
 }
